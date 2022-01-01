@@ -1,0 +1,19 @@
+import "../dist/msgraph.js";
+
+namespace Cadl.MsGraph;
+
+model TCreatedResponse<T> {
+        ... CreatedResponse;
+        ... LocationHeader;
+        @body body: T;
+}
+
+@doc("An OData standard list representation.")
+model List<T> {
+    value: T[];
+}
+
+@doc("An Graph standard paged list representation.")
+model PagedList<T> extends List<T> {
+    nextLink?: string
+}

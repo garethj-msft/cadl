@@ -107,6 +107,12 @@
       "projectFolder": "packages/openapi3",
       "reviewCategory": "production",
       "shouldPublish": true
+    },
+    {
+      "packageName": "@cadl-lang/msgraph",
+      "projectFolder": "packages/msgraph",
+      "reviewCategory": "production",
+      "shouldPublish": true
     }
   ]
 }
