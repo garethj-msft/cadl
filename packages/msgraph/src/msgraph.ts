@@ -9,11 +9,11 @@ import {
   NewParameterOptions,
   ModelTypeProperty,
 } from "@cadl-lang/compiler";
-
-import { $query } from "@cadl-lang/rest/dist/src/http";
+import { http } from "@cadl-lang/rest";
+const { $query } = http;
 
 const libDefinition = {
-  name: "@msgraph-tools/msgraph",
+  name: "@cadl-lang/msgraph",
   diagnostics: {
     "entityContainer-only-namespace": {
       severity: "error",

@@ -18,7 +18,7 @@
   ],
   "type": "module",
   "main": "dist/src/msgraph.js",
-  "cadlMain": "dist/src/msgraph.js",
+  "cadlMain": "lib/msgraph.cadl",
   "engines": {
     "node": ">=14.0.0"
   },

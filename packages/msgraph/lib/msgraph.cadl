@@ -1,11 +1,12 @@
-import "../dist/msgraph.js";
+import "../dist/src/msgraph.js";
+import "@cadl-lang/rest";
 
 namespace Cadl.MsGraph;
 
 model TCreatedResponse<T> {
-        ... CreatedResponse;
-        ... LocationHeader;
-        @body body: T;
+        ... Cadl.Http.CreatedResponse;
+        ... Cadl.Http.LocationHeader;
+        @Cadl.Http.body body: T;
 }
 
 @doc("An OData standard list representation.")
