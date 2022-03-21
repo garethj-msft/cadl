@@ -27,6 +27,12 @@ const libDefinition = {
         default: "The @skip decorator can only be applied to operations.",
       },
     },
+    "skip-op-fail": {
+      severity: "error",
+      messages: {
+        default: "Failed to set up the skip parameter.",
+      },
+    },
   },
 } as const;
 
@@ -70,6 +76,97 @@ export function $service(program: Program, entity: Type, serviceKey: string) {
   program.stateMap(serviceFieldsKey).set(entity, serviceKey);
 }
 
+const importModelFieldsKey = Symbol();
+
+export function $importModel(program: Program, entity: Type, importModelKey: string) {
+  if (!importModelKey && entity.kind === "Model") {
+    importModelKey = entity.name;
+  }
+  program.stateMap(importModelFieldsKey).set(entity, importModelKey);
+}
+
+const serverGeneratedFieldsKey = Symbol();
+
+export function $serverGenerated(program: Program, entity: Type, serverGeneratedKey: string) {
+  if (!serverGeneratedKey && entity.kind === "ModelProperty") {
+    serverGeneratedKey = entity.name;
+  }
+  program.stateMap(serverGeneratedFieldsKey).set(entity, serverGeneratedKey);
+}
+
+const externalFieldsKey = Symbol();
+
+export function $external(program: Program, entity: Type, externalKey: string) {
+  if (!externalKey && entity.kind === "Model") {
+    externalKey = entity.name;
+  }
+  program.stateMap(externalFieldsKey).set(entity, externalKey);
+}
+
+const partialFieldsKey = Symbol();
+
+export function $partial(program: Program, entity: Type, partialKey: string) {
+  if (!partialKey && entity.kind === "Model") {
+    partialKey = entity.name;
+  }
+  program.stateMap(partialFieldsKey).set(entity, partialKey);
+}
+
+const relationFieldsKey = Symbol();
+
+export function $relation(program: Program, entity: Type, relationKey: string) {
+  if (!relationKey && entity.kind === "ModelProperty") {
+    relationKey = entity.name;
+  }
+  program.stateMap(relationFieldsKey).set(entity, relationKey);
+}
+
+
+const refRelationFieldsKey = Symbol();
+
+export function $refRelation(program: Program, entity: Type, refRelationKey: string) {
+  if (!refRelationKey && entity.kind === "ModelProperty") {
+    refRelationKey = entity.name;
+  }
+  program.stateMap(refRelationFieldsKey).set(entity, refRelationKey);
+}
+
+const workloadNameFieldsKey = Symbol();
+
+export function $workloadName(program: Program, entity: Type, workloadNameKey: string) {
+  if (!workloadNameKey && entity.kind === "ModelProperty") {
+    workloadNameKey = entity.name;
+  }
+  program.stateMap(workloadNameFieldsKey).set(entity, workloadNameKey);
+}
+
+const requiredFieldsKey = Symbol();
+
+export function $required(program: Program, entity: Type, requiredKey: string) {
+  if (!requiredKey && entity.kind === "ModelProperty") {
+    requiredKey = entity.name;
+  }
+  program.stateMap(requiredFieldsKey).set(entity, requiredKey);
+}
+
+const immutableFieldsKey = Symbol();
+
+export function $immutable(program: Program, entity: Type, immutableKey: string) {
+  if (!immutableKey && entity.kind === "ModelProperty") {
+    immutableKey = entity.name;
+  }
+  program.stateMap(immutableFieldsKey).set(entity, immutableKey);
+}
+
+const writeOnlyFieldsKey = Symbol();
+
+export function $writeOnly(program: Program, entity: Type, writeOnlyKey: string) {
+  if (!writeOnlyKey && entity.kind === "ModelProperty") {
+    writeOnlyKey = entity.name;
+  }
+  program.stateMap(writeOnlyFieldsKey).set(entity, writeOnlyKey);
+}
+
 
 const topFieldsKey = Symbol();
 
@@ -89,7 +186,6 @@ export function $skip(program: Program, entity: Type, skipKey: string) {
   let operation = entity as OperationType;
   if (!operation)
   {
-    console.log("@@@ Not operation. @@@");
     reportDiagnostic(program, {
         code: "skip-only-op",
         target: entity,
@@ -97,19 +193,26 @@ export function $skip(program: Program, entity: Type, skipKey: string) {
   }
   else
   {
-    console.log("@@@ IS operation. @@@");
-    console.log(operation);
+    let qp = addOperationParameter(program, operation, "skip", "int32") as ModelTypeProperty;
+    if (!qp)
+    {
+      reportDiagnostic(program, {
+          code: "skip-op-fail",
+          target: entity,
+        });
+    }
+    else
+    {
+      qp.optional = true;
+      $query(
+        program,
+        qp,
+        "skip",
+      );
+
+      program.stateMap(skipFieldsKey).set(entity, skipKey);
+    }
   }
-
-  let qp = addOperationParameter(program, operation, "skip", "int32") as ModelTypeProperty;
-  qp.optional = true;
-  $query(
-    program,
-    qp,
-    "skip",
-  );
-
-  program.stateMap(skipFieldsKey).set(entity, skipKey);
 }
 
 const skipTokenFieldsKey = Symbol();
