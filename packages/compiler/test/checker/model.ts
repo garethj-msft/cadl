@@ -1,6 +1,6 @@
 import { match, ok, strictEqual } from "assert";
 import { ModelType, Type } from "../../core/types.js";
-import { createTestHost, TestHost } from "../test-host.js";
+import { createTestHost, expectDiagnosticEmpty, TestHost } from "../../testing/index.js";
 
 describe("compiler: models", () => {
   let testHost: TestHost;
@@ -54,7 +54,7 @@ describe("compiler: models", () => {
   });
 
   it("doesn't invoke decorators on uninstantiated templates", async () => {
-    let blues = new WeakSet();
+    const blues = new WeakSet();
     let calls = 0;
     testHost.addJsFile("dec.js", {
       $blue(p: any, t: Type) {
@@ -153,14 +153,14 @@ describe("compiler: models", () => {
         `
       );
       const diagnostics = await testHost.diagnose("main.cadl");
-      strictEqual(diagnostics.length, 0);
+      expectDiagnosticEmpty(diagnostics);
     });
   });
 
   describe("with is", () => {
     let testHost: TestHost;
-    let blues = new WeakSet();
-    let reds = new WeakSet();
+    const blues = new WeakSet();
+    const reds = new WeakSet();
     beforeEach(async () => {
       testHost = await createTestHost();
       testHost.addJsFile("dec.js", {
@@ -286,7 +286,7 @@ describe("compiler: models", () => {
         `
       );
       const diagnostics = await testHost.diagnose("main.cadl");
-      strictEqual(diagnostics.length, 0);
+      expectDiagnosticEmpty(diagnostics);
     });
 
     it("resolve recursive template types", async () => {

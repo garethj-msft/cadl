@@ -4,6 +4,7 @@
 
 // package google.example.library.v1;
 import "@cadl-lang/rest";
+import "@cadl-lang/openapi";
 
 using Cadl.Http;
 
@@ -34,7 +35,6 @@ namespace LibraryService {
 Lists shelves. The order is unspecified but deterministic. Newly created
 shelves will not necessarily be added to the end of this list.
 """)
-  @pageable("next_page_token")
   @route("shelves")
   op listShelves(...ListRequestBase): ListShelvesResponse | RpcStatus;
 
@@ -82,8 +82,8 @@ Returns NOT_FOUND if the shelf does not exist.
 The name of a book.
 Book names have the form `shelves/{shelf_id}/books/{book_id}`
 """)
-@format("shelves/\\w+/books/\\w+")
-model book_name extends string {}
+@pattern("shelves/\\w+/books/\\w+")
+model book_name is string {}
 
 @doc("A single book in the library.")
 model Book {
@@ -108,8 +108,8 @@ The name is ignored when creating a book.
 The name of a shelf.
 Shelf names have the form `shelves/{shelf_id}`.
 """)
-@format("shelves/\\w+")
-model shelf_name extends string {}
+@pattern("shelves/\\w+")
+model shelf_name is string {}
 
 @doc("A Shelf contains a collection of books with a theme.")
 model Shelf {
@@ -267,6 +267,7 @@ page of results.
 model Empty {}
 
 @doc("An unexpected error response.")
+@error
 model RpcStatus {
   code?: int32;
   message?: string;

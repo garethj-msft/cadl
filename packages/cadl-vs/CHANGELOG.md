@@ -1,6 +1,20 @@
 # Change Log - cadl-vs
 
-This log was last generated on Thu, 16 Dec 2021 08:02:20 GMT and should not be manually modified.
+This log was last generated on Wed, 09 Mar 2022 17:42:09 GMT and should not be manually modified.
+
+## 0.6.1
+Wed, 09 Mar 2022 17:42:09 GMT
+
+### Patches
+
+- Remove debug assert for stderr output from language server
+
+## 0.6.0
+Fri, 04 Feb 2022 18:00:18 GMT
+
+### Minor changes
+
+- Add cadl project file to list of files watched
 
 ## 0.5.0
 Thu, 16 Dec 2021 08:02:20 GMT

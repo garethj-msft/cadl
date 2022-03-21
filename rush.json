@@ -4,7 +4,7 @@
  */
 {
   "$schema": "https://developer.microsoft.com/json-schemas/rush/v5/rush.schema.json",
-  "rushVersion": "5.54.0",
+  "rushVersion": "5.62.1",
   "pnpmVersion": "5.18.10",
   "ensureConsistentVersions": true,
   /**
@@ -91,6 +91,12 @@
       "shouldPublish": true
     },
     {
+      "packageName": "@cadl-lang/eslint-config-cadl",
+      "projectFolder": "packages/eslint-config-cadl",
+      "reviewCategory": "production",
+      "shouldPublish": true
+    },
+    {
       "packageName": "@cadl-lang/spec",
       "projectFolder": "packages/spec",
       "reviewCategory": "production",
@@ -99,6 +105,12 @@
     {
       "packageName": "@cadl-lang/rest",
       "projectFolder": "packages/rest",
+      "reviewCategory": "production",
+      "shouldPublish": true
+    },
+    {
+      "packageName": "@cadl-lang/openapi",
+      "projectFolder": "packages/openapi",
       "reviewCategory": "production",
       "shouldPublish": true
     },
@@ -113,6 +125,18 @@
       "projectFolder": "packages/msgraph",
       "reviewCategory": "production",
       "shouldPublish": true
+    },
+    {
+      "packageName": "@cadl-lang/versioning",
+      "projectFolder": "packages/versioning",
+      "reviewCategory": "production",
+      "shouldPublish": true
+    },
+    {
+      "packageName": "cadl-playground",
+      "projectFolder": "packages/playground",
+      "reviewCategory": "production",
+      "shouldPublish": false
     }
   ]
 }

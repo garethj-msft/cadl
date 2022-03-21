@@ -1,6 +1,6 @@
 import { ok, strictEqual } from "assert";
 import { ModelType, UnionType, UnionTypeVariant } from "../../core/types.js";
-import { createTestHost, TestHost } from "../test-host.js";
+import { createTestHost, TestHost } from "../../testing/index.js";
 
 describe("compiler: union declarations", () => {
   let testHost: TestHost;
@@ -10,7 +10,7 @@ describe("compiler: union declarations", () => {
   });
 
   it("can be declared and decorated", async () => {
-    let blues = new WeakSet();
+    const blues = new WeakSet();
     testHost.addJsFile("test.js", {
       $blue(p: any, t: UnionType | UnionTypeVariant) {
         blues.add(t);
@@ -93,5 +93,18 @@ describe("compiler: union declarations", () => {
     for (const key of type.variants.keys()) {
       strictEqual(typeof key, "symbol");
     }
+  });
+
+  it("reduces nevers", async () => {
+    testHost.addCadlFile(
+      "main.cadl",
+      `
+      @test model Foo { x: int32 | never };
+      `
+    );
+
+    const { Foo } = (await testHost.compile("./")) as { Foo: ModelType };
+    const type = Foo.properties.get("x")!.type as UnionType;
+    strictEqual(type.options.length, 1);
   });
 });

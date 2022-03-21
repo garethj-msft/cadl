@@ -1,3 +1,5 @@
+import "@cadl-lang/openapi";
+
 using Cadl.Http;
 
 //
@@ -26,10 +28,10 @@ model LatLng {
   longitude: float64;
 }
 
-@body
 model Empty {}
 
 @doc("An unexpected error response.")
+@error
 model RpcStatus {
   code?: int32;
   message?: string;

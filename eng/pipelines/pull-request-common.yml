@@ -14,21 +14,25 @@ steps:
   - script: node packages/cadl-vs/scripts/build.js --restore
     displayName: Restore .NET Dependencies
 
-  - script: node common/scripts/install-run-rush.js change -v
-    condition: and(succeeded(), eq(startsWith(variables['System.PullRequest.SourceBranch'], 'publish/'), false))
-    displayName: Verify Change Files
-
   - script: node common/scripts/install-run-rush.js rebuild --verbose
     displayName: Build
 
   - script: node common/scripts/install-run-rush.js test-official
     displayName: Test
 
+  - template: ./upload-coverage.yml
+
   - script: node common/scripts/install-run-rush.js check-format
     displayName: Check Formatting
+
+  - script: node common/scripts/install-run-rush.js lint
+    displayName: Lint
 
   - script: cd packages/samples && npm run regen-samples
     displayName: Regenerate Samples
 
   - script: node eng/scripts/check-for-changed-files.js
     displayName: Check Git Status For Changed Files
+
+  - script: node common/scripts/install-run-rush.js e2e
+    displayName: E2E Tests

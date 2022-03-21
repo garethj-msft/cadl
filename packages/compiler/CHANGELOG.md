@@ -1,6 +1,89 @@
 # Change Log - @cadl-lang/compiler
 
-This log was last generated on Thu, 16 Dec 2021 16:21:46 GMT and should not be manually modified.
+This log was last generated on Wed, 09 Mar 2022 17:42:09 GMT and should not be manually modified.
+
+## 0.29.0
+Wed, 09 Mar 2022 17:42:09 GMT
+
+### Minor changes
+
+- Move @key decorator to core
+- Replace findChildModels with mapChildModels
+- **Exports** `NodeHost` for programmatic usage of Cadl 
+- **Added** `@knownValues` decorator providing set of known options for a string type
+- Using `extends` with intrinsic types will emit diagnostic.
+- Allow `op` in interfaces
+- Complete using statements and qualified decorators.
+- Add back `@inspectType` and `@inspectTypeName` decorators
+- Redirect console.log to stderr in language server
+
+### Patches
+
+- Improve list parsing error recovery
+- Use the proper symbol to use cadl exports in eval
+- Fix issue with missing namespace name in certain cases
+- Fix issue using `is` with intrinsic types.
+- Fix decorator completion on namespaces
+- refactor symbols and other improvements
+
+## 0.28.0
+Tue, 15 Feb 2022 22:35:02 GMT
+
+### Minor changes
+
+- Internals: Module resolver not dependent on `CompilerHost`
+- Provide reusable decorator validation for target
+
+### Patches
+
+- Fix parser issue with missing error flag when using `interface extends` instead of `interface mixes`.
+- Fix parser issue with incorrect `op` in various projection expressions, and wrong node type for `/` and `*`.
+- Add support for separate `@summary` from `@doc`
+
+## 0.27.0
+Mon, 14 Feb 2022 03:01:07 GMT
+
+### Minor changes
+
+- Provide helper for library to validate parameter
+- Update api for decorator taking `DecoratorContext` instead of `Program`
+
+### Patches
+
+- Fix bugs involving merged decorators
+- Give nice error for using extends keyword in interfaces
+- Implement template parameter defaults
+- Bump dependency versions
+
+## 0.26.0
+Fri, 04 Feb 2022 18:00:18 GMT
+
+### Minor changes
+
+- Validate for `@doc` decorator argument is a string
+- Add @error decorator in core
+- **Added** --emit flag to configure the emitter(s) to use and seperate library imports from emitters
+- Add directory manipulation to CompilerHost
+- Update to syntax tree to be readonly
+- Formatter: Separate Enum members with decorator with new lines
+- Implement projections and versioning
+
+### Patches
+
+- Adding @format decorator to compiler and openapi3 emitter
+- Add `sourceObject` parameter to `@doc` decorator to aid in producing messages using a context object
+- `@list` decorator will now ignore `TemplateParameter` objects
+- Init include compiler as dependency in generated package.json
+- Allow CLI array options to come before positional arguments
+- **Fix** Diagnostic location for invalid use of templated models
+- Fix path normalization issue that caused diagnostics from language server to be dropped.
+- Fix error with file ending with mutline comment
+- **Fix** issue when loading cadl using a different casing than the actual casing in a case insenstivie file system
+- Add @friendlyName decorator to customize model names for emitters
+- Fix issue where identifiers could be confused with keywords when they had common endings.
+- Renaming @format decorator to @pattern.
+- Stop offering `true` and `false` completions after `.`
+- Fix completion icon for symbols pulled in via using
 
 ## 0.25.0
 Thu, 16 Dec 2021 08:02:20 GMT

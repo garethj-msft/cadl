@@ -177,11 +177,6 @@ describe("compiler: scanner", () => {
     ]);
   });
 
-  it("does not scan greater-than-equals as one operator", () => {
-    const all = tokens("x>=y");
-    verify(all, [[Token.Identifier], [Token.GreaterThan], [Token.Equals], [Token.Identifier]]);
-  });
-
   it("scans numeric literals", () => {
     const all = tokens("42 0xBEEF 0b1010 1.5e4 314.0e-2 1e+1000");
     verify(all, [
@@ -196,6 +191,27 @@ describe("compiler: scanner", () => {
       [Token.NumericLiteral, "314.0e-2"],
       [Token.Whitespace],
       [Token.NumericLiteral, "1e+1000"],
+    ]);
+  });
+
+  it("scans projection-related tokens", () => {
+    const all = tokens("<= >= && || == projection if =>");
+    verify(all, [
+      [Token.LessThanEquals, "<="],
+      [Token.Whitespace],
+      [Token.GreaterThanEquals, ">="],
+      [Token.Whitespace],
+      [Token.AmpsersandAmpersand, "&&"],
+      [Token.Whitespace],
+      [Token.BarBar, "||"],
+      [Token.Whitespace],
+      [Token.EqualsEquals, "=="],
+      [Token.Whitespace],
+      [Token.ProjectionKeyword, "projection"],
+      [Token.Whitespace],
+      [Token.IfKeyword, "if"],
+      [Token.Whitespace],
+      [Token.EqualsGreaterThan, "=>"],
     ]);
   });
 
@@ -283,6 +299,22 @@ describe("compiler: scanner", () => {
     ]);
   });
 
+  // https://github.com/microsoft/cadl/issues/168
+  it("scan file ending with multi-line comment", () => {
+    const multiLineComment = "/* foo\n*bar\n*/";
+    verify(tokens(multiLineComment), [
+      [Token.MultiLineComment, multiLineComment, { pos: 0, line: 0, character: 0 }],
+    ]);
+    verify(tokens(`namespace Bar;\n${multiLineComment}`), [
+      [Token.NamespaceKeyword, "namespace", { pos: 0, line: 0, character: 0 }],
+      [Token.Whitespace, " ", { pos: 9, line: 0, character: 9 }],
+      [Token.Identifier, "Bar", { pos: 10, line: 0, character: 10 }],
+      [Token.Semicolon, ";", { pos: 13, line: 0, character: 13 }],
+      [Token.NewLine, "\n", { pos: 14, line: 0, character: 14 }],
+      [Token.MultiLineComment, multiLineComment, { pos: 15, line: 1, character: 0 }],
+    ]);
+  });
+
   // It's easy to forget to update TokenDisplay or Min/Max ranges...
   it("provides friendly token display and classification", () => {
     const tokenCount = Object.values(Token).filter((v) => typeof v === "number").length;
@@ -294,7 +326,14 @@ describe("compiler: scanner", () => {
     );
 
     // check that keywords have appropriate display and limits
-    const nonStatementKeywords = [Token.ExtendsKeyword, Token.TrueKeyword, Token.FalseKeyword];
+    const nonStatementKeywords = [
+      Token.ExtendsKeyword,
+      Token.ReturnKeyword,
+      Token.TrueKeyword,
+      Token.FalseKeyword,
+      Token.VoidKeyword,
+      Token.NeverKeyword,
+    ];
     let minKeywordLengthFound = Number.MAX_SAFE_INTEGER;
     let maxKeywordLengthFound = Number.MIN_SAFE_INTEGER;
 
@@ -307,7 +346,7 @@ describe("compiler: scanner", () => {
       minKeywordLengthFound = Math.min(minKeywordLengthFound, name.length);
       maxKeywordLengthFound = Math.max(maxKeywordLengthFound, name.length);
 
-      assert.strictEqual(TokenDisplay[token], `'${name}'`);
+      assert.strictEqual(TokenDisplay[token], `'${name}'`, "token display should match");
       assert(isKeyword(token), `${name} should be classified as a keyword`);
       if (!nonStatementKeywords.includes(token)) {
         assert(isStatementKeyword(token), `${name} should be classified as statement keyword`);
@@ -319,12 +358,12 @@ describe("compiler: scanner", () => {
       KeywordLimit.MinLength,
       `min keyword length is incorrect, set KeywordLimit.MinLength to ${minKeywordLengthFound}`
     );
+
     assert.strictEqual(
       maxKeywordLengthFound,
       KeywordLimit.MaxLength,
       `max keyword length is incorrect, set KeywordLimit.MaxLength to ${maxKeywordLengthFound}`
     );
-
     assert(
       maxKeywordLengthFound < 11,
       "We need to change the keyword lookup algorithm in the scanner if we ever add a keyword with 11 characters or more."
@@ -393,6 +432,15 @@ describe("compiler: scanner", () => {
 
     assert(isIdentifierContinue(0x200c), "U+200C (ZWNJ) should be allowed to continue identifier.");
     assert(isIdentifierContinue(0x200d), "U+200D (ZWJ) should be allowed to continue identifier.");
+  });
+
+  describe("keyword collision", () => {
+    for (const identifier of ["outerface", "famespace", "notanamespace", "notaninterface"]) {
+      it(`does not think ${identifier} is a keyword`, () => {
+        const [[token]] = tokens(identifier);
+        assert.strictEqual(token, Token.Identifier);
+      });
+    }
   });
 
   it("scans this file", async () => {

@@ -1,7 +1,7 @@
 import { ok, strictEqual } from "assert";
 import { Program } from "../../core/program.js";
-import { ModelType, NamespaceType, Type } from "../../core/types.js";
-import { createTestHost, TestHost } from "../test-host.js";
+import { DecoratorContext, ModelType, NamespaceType, Type } from "../../core/types.js";
+import { createTestHost, TestHost } from "../../testing/index.js";
 
 describe("compiler: namespaces with blocks", () => {
   const blues = new WeakSet();
@@ -133,6 +133,106 @@ describe("compiler: namespaces with blocks", () => {
     strictEqual(Z.properties.size, 2, "has two properties");
   });
 
+  it("runs all decorators on merged namespaces", async () => {
+    const reds = new WeakSet();
+    let isRedDuringRef = false;
+    let isBlueDuringRef = false;
+    testHost.addJsFile("red.js", {
+      $red(p: Program, t: Type) {
+        reds.add(t);
+      },
+      $ref(p: Program, t: Type, arg: Type) {
+        isRedDuringRef = reds.has(arg);
+        isBlueDuringRef = blues.has(arg);
+      },
+    });
+
+    testHost.addCadlFile(
+      "main.cadl",
+      `
+      import "./blue.js";
+      import "./red.js";
+
+      @ref(N)
+      namespace A { }
+      
+      @red
+      @test
+      namespace N {}
+
+      @blue
+      namespace N {}
+      `
+    );
+
+    const { N } = (await testHost.compile("./")) as {
+      N: NamespaceType;
+    };
+
+    ok(reds.has(N), "is ultimately red"); // passes
+    ok(blues.has(N), "is ultimately blue"); // passes
+
+    ok(isRedDuringRef, "red at ref point");
+    ok(isBlueDuringRef, "blue at ref point"); // fails
+  });
+
+  it("runs all decorators on merged namespaces across files", async () => {
+    const reds = new WeakSet();
+    let isRedDuringRef = false;
+    let isBlueDuringRef = false;
+    testHost.addJsFile("red.js", {
+      $red(p: Program, t: Type) {
+        reds.add(t);
+      },
+      $ref(p: Program, t: Type, arg: Type) {
+        isRedDuringRef = reds.has(arg);
+        isBlueDuringRef = blues.has(arg);
+      },
+    });
+
+    testHost.addCadlFile(
+      "main.cadl",
+      `
+      import "./blue.js";
+      import "./red.js";
+      import "./one.cadl";
+      import "./two.cadl";
+      
+      @ref(N)
+      namespace A { }
+    
+      `
+    );
+
+    testHost.addCadlFile(
+      "one.cadl",
+      `
+      @red
+      @test
+      namespace N {}
+    
+      `
+    );
+
+    testHost.addCadlFile(
+      "two.cadl",
+      `
+      @blue
+      namespace N {}
+      `
+    );
+
+    const { N } = (await testHost.compile("./")) as {
+      N: NamespaceType;
+    };
+
+    ok(reds.has(N), "is ultimately red"); // passes
+    ok(blues.has(N), "is ultimately blue"); // passes
+
+    ok(isRedDuringRef, "red at ref point");
+    ok(isBlueDuringRef, "blue at ref point"); // fails
+  });
+
   it("can see things in outer scope same file", async () => {
     testHost.addCadlFile(
       "main.cadl",
@@ -202,7 +302,7 @@ describe("compiler: namespaces with blocks", () => {
     testHost.addCadlFile(
       "main.cadl",
       `
-      @doc(Azure.Foo)
+      @test(Azure.Foo)
       namespace Baz { };
       namespace Azure {
         model Foo { }
@@ -265,8 +365,8 @@ describe("compiler: blockless namespaces", () => {
 
   it("merges properly with other namespaces using eval", async () => {
     testHost.addJsFile("test.js", {
-      $eval(p: Program) {
-        p.evalCadlScript(`namespace N; @test model Z { ... X, ... Y }`);
+      $eval({ program }: DecoratorContext) {
+        program.evalCadlScript(`namespace N; @test model Z { ... X, ... Y }`);
       },
     });
     testHost.addCadlFile(
@@ -302,6 +402,28 @@ describe("compiler: blockless namespaces", () => {
       Z: ModelType;
     };
     strictEqual(Z.properties.size, 2, "has two properties");
+  });
+
+  it("can access the cadl namespace using eval", async () => {
+    testHost.addJsFile("test.js", {
+      $eval({ program }: DecoratorContext) {
+        program.evalCadlScript(`namespace Z; @test model Z { @doc("x") x: int32 }`);
+      },
+    });
+
+    testHost.addCadlFile(
+      "main.cadl",
+      `
+      import "./test.js";
+
+      @test @eval model X { x: int32 }
+      `
+    );
+
+    const { X } = (await testHost.compile("./")) as {
+      X: ModelType;
+    };
+    strictEqual((X.properties.get("x")!.type as ModelType).name, "int32");
   });
 
   it("does lookup correctly", async () => {
@@ -361,7 +483,7 @@ describe("compiler: blockless namespaces", () => {
       `
     );
 
-    await testHost.compile("/");
+    await testHost.compile("./");
   });
 
   it("works with blockful namespaces", async () => {
@@ -383,7 +505,7 @@ describe("compiler: blockless namespaces", () => {
       model X { a: N.M.A }
       `
     );
-    const { N, M } = (await testHost.compile("/")) as {
+    const { N, M } = (await testHost.compile("./")) as {
       N: NamespaceType;
       M: NamespaceType;
     };
@@ -418,7 +540,7 @@ describe("compiler: blockless namespaces", () => {
       model X { a: N.M.O.A }
       `
     );
-    const { M, O } = (await testHost.compile("/")) as {
+    const { M, O } = (await testHost.compile("./")) as {
       M: NamespaceType;
       O: NamespaceType;
     };
@@ -444,7 +566,7 @@ describe("compiler: blockless namespaces", () => {
       `
     );
 
-    await testHost.compile("/a.cadl");
+    await testHost.compile("./a.cadl");
   });
 
   it("accumulates declarations inside of it", async () => {
@@ -458,7 +580,7 @@ describe("compiler: blockless namespaces", () => {
       `
     );
 
-    const { Foo } = (await testHost.compile("/a.cadl")) as {
+    const { Foo } = (await testHost.compile("./a.cadl")) as {
       Foo: NamespaceType;
     };
 
@@ -491,9 +613,39 @@ describe("compiler: namespace type name", () => {
       `
     );
 
-    const { Model1, Model2 } = await testHost.compile("/a.cadl");
+    const { Model1, Model2 } = await testHost.compile("./a.cadl");
     strictEqual(testHost.program.checker?.getTypeName(Model1), "Foo.Model1");
     strictEqual(testHost.program.checker?.getTypeName(Model2), "Foo.Other.Bar.Model2");
+  });
+
+  it("gets full name in edge case with decorators", async () => {
+    testHost.addJsFile("lib.js", {
+      namespace: "AnotherNamespace",
+      $dec() {},
+    });
+
+    testHost.addCadlFile(
+      "main.cadl",
+      `
+      import "./lib.js";
+
+      @AnotherNamespace.dec(AnotherNamespace.AnotherModel)
+      namespace SomeNamespace {
+        @test()
+        model SomeModel {}
+      }
+
+      namespace AnotherNamespace {
+        @test()
+        model AnotherModel {}
+      }
+      `
+    );
+
+    const { SomeModel, AnotherModel } = await testHost.compile("./main.cadl");
+    const checker = testHost.program.checker!;
+    strictEqual(checker.getTypeName(SomeModel), "SomeNamespace.SomeModel");
+    strictEqual(checker.getTypeName(AnotherModel), "AnotherNamespace.AnotherModel");
   });
 });
 

@@ -1,21 +1,38 @@
 import {
-  getListOperationType,
+  DecoratorContext,
   getServiceNamespace,
   InterfaceType,
-  isListOperation,
   ModelTypeProperty,
   NamespaceType,
   OperationType,
   Program,
   setDecoratorNamespace,
   Type,
+  validateDecoratorTarget,
 } from "@cadl-lang/compiler";
 import { reportDiagnostic } from "./diagnostics.js";
-import { getOperationVerb, getPathParamName, hasBody, HttpVerb, isPathParam } from "./http.js";
-import { getResourceTypeKey } from "./resource.js";
+import {
+  getHeaderFieldName,
+  getOperationVerb,
+  getPathParamName,
+  getQueryParamName,
+  HttpVerb,
+  isBody,
+} from "./http.js";
 import { getAction, getResourceOperation, getSegment } from "./rest.js";
 
 export type OperationContainer = NamespaceType | InterfaceType;
+
+export interface HttpOperationParameter {
+  type: "query" | "path" | "header";
+  name: string;
+  param: ModelTypeProperty;
+}
+
+export interface HttpOperationParameters {
+  parameters: HttpOperationParameter[];
+  body?: ModelTypeProperty;
+}
 
 export interface OperationDetails {
   path: string;
@@ -23,7 +40,7 @@ export interface OperationDetails {
   verb: HttpVerb;
   groupName: string;
   container: OperationContainer;
-  parameters: ModelTypeProperty[];
+  parameters: HttpOperationParameters;
   operation: OperationType;
 }
 
@@ -32,14 +49,14 @@ export interface RoutePath {
   isReset: boolean;
 }
 
-export function $route(program: Program, entity: Type, path: string) {
+export function $route({ program }: DecoratorContext, entity: Type, path: string) {
   setRoute(program, entity, {
     path,
     isReset: false,
   });
 }
 
-export function $routeReset(program: Program, entity: Type, path: string) {
+export function $routeReset({ program }: DecoratorContext, entity: Type, path: string) {
   setRoute(program, entity, {
     path,
     isReset: true,
@@ -65,19 +82,37 @@ function addRouteContainer(program: Program, entity: Type): void {
 
 const routesKey = Symbol();
 function setRoute(program: Program, entity: Type, details: RoutePath) {
-  if (entity.kind !== "Namespace" && entity.kind !== "Interface" && entity.kind !== "Operation") {
-    reportDiagnostic(program, {
-      code: "decorator-wrong-type",
-      format: { decorator: "route", entityKind: entity.kind },
-      target: entity,
-    });
+  if (
+    !validateDecoratorTarget(program, entity, "@route", ["Namespace", "Interface", "Operation"])
+  ) {
     return;
   }
 
   // Register the container of the operation as one that holds routed operations
   addRouteContainer(program, entity);
 
-  program.stateMap(routesKey).set(entity, details);
+  const state = program.stateMap(routesKey);
+
+  if (state.has(entity)) {
+    if (entity.kind === "Operation" || entity.kind === "Interface") {
+      reportDiagnostic(program, {
+        code: "duplicate-route-decorator",
+        messageId: entity.kind === "Operation" ? "operation" : "interface",
+        target: entity,
+      });
+    } else {
+      const existingValue: RoutePath = state.get(entity);
+      if (existingValue.path !== details.path) {
+        reportDiagnostic(program, {
+          code: "duplicate-route-decorator",
+          messageId: "namespace",
+          target: entity,
+        });
+      }
+    }
+  } else {
+    state.set(entity, details);
+  }
 }
 
 export function getRoutePath(
@@ -89,7 +124,10 @@ export function getRoutePath(
 
 function buildPath(pathFragments: string[]) {
   // Join all fragments with leading and trailing slashes trimmed
-  const path = pathFragments.map((r) => r.replace(/(^\/|\/$)/g, "")).join("/");
+  const path = pathFragments
+    .map((r) => r.replace(/(^\/|\/$)/g, ""))
+    .filter((x) => x !== "")
+    .join("/");
   return `/${path}`;
 }
 
@@ -97,23 +135,89 @@ function addSegmentFragment(program: Program, target: Type, pathFragments: strin
   // Don't add the segment prefix if it is meant to be excluded
   // (empty string means exclude the segment)
   const segment = getSegment(program, target);
-  if (segment !== "") {
+  if (segment && segment !== "") {
     pathFragments.push(`/${segment}`);
   }
 }
 
-function lowerCaseFirstChar(str: string): string {
-  return str[0].toLocaleLowerCase() + str.substring(1);
+export function getOperationParameters(
+  program: Program,
+  operation: OperationType
+): HttpOperationParameters {
+  const result: HttpOperationParameters = {
+    parameters: [],
+  };
+  let unAnnotatedParam: ModelTypeProperty | undefined;
+
+  for (const param of operation.parameters.properties.values()) {
+    const queryParam = getQueryParamName(program, param);
+    const pathParam = getPathParamName(program, param);
+    const headerParam = getHeaderFieldName(program, param);
+    const bodyParm = isBody(program, param);
+
+    const defined = [
+      ["query", queryParam],
+      ["path", pathParam],
+      ["header", headerParam],
+      ["body", bodyParm],
+    ].filter((x) => !!x[1]);
+    if (defined.length >= 2) {
+      reportDiagnostic(program, {
+        code: "operation-param-duplicate-type",
+        format: { paramName: param.name, types: defined.map((x) => x[0]).join(", ") },
+        target: param,
+      });
+    }
+
+    if (queryParam) {
+      result.parameters.push({ type: "query", name: queryParam, param });
+    } else if (pathParam) {
+      result.parameters.push({ type: "path", name: pathParam, param });
+    } else if (headerParam) {
+      result.parameters.push({ type: "header", name: headerParam, param });
+    } else if (bodyParm) {
+      if (result.body === undefined) {
+        result.body = param;
+      } else {
+        reportDiagnostic(program, { code: "duplicate-body", target: param });
+      }
+    } else {
+      if (unAnnotatedParam === undefined) {
+        unAnnotatedParam = param;
+      } else {
+        reportDiagnostic(program, {
+          code: "duplicate-body",
+          messageId: "duplicateUnannotated",
+          target: param,
+        });
+      }
+    }
+  }
+
+  if (unAnnotatedParam !== undefined) {
+    if (result.body === undefined) {
+      result.body = unAnnotatedParam;
+    } else {
+      reportDiagnostic(program, {
+        code: "duplicate-body",
+        messageId: "bodyAndUnannotated",
+        target: unAnnotatedParam,
+      });
+    }
+  }
+  return result;
 }
 
 function generatePathFromParameters(
   program: Program,
   operation: OperationType,
   pathFragments: string[],
-  parameters: ModelTypeProperty[]
+  parameters: HttpOperationParameters
 ) {
-  for (const [_, param] of operation.parameters.properties) {
-    if (getPathParamName(program, param)) {
+  const filteredParameters: HttpOperationParameter[] = [];
+  for (const httpParam of parameters.parameters) {
+    const { type, param } = httpParam;
+    if (type === "path") {
       addSegmentFragment(program, param, pathFragments);
 
       // Add the path variable for the parameter
@@ -125,38 +229,24 @@ function generatePathFromParameters(
       }
     }
 
-    parameters.push(param);
+    // Push all usable parameters to the filtered list
+    filteredParameters.push(httpParam);
   }
 
-  // If the operation is marked as a list op, add the collection segment
-  if (isListOperation(program, operation)) {
-    const resourceType = getListOperationType(program, operation);
-    if (resourceType) {
-      const resourceKey = getResourceTypeKey(program, resourceType);
-      addSegmentFragment(program, resourceKey.keyProperty, pathFragments);
-    }
-  } else {
-    // If it's a create operation, add the collection segment
-    const resourceOperation = getResourceOperation(program, operation);
-    if (resourceOperation && resourceOperation.operation === "create") {
-      const resourceKey = getResourceTypeKey(program, resourceOperation.resourceType);
-      addSegmentFragment(program, resourceKey.keyProperty, pathFragments);
-    } else {
-      // Append the action name if necessary
-      const action = getAction(program, operation);
-      if (action) {
-        pathFragments.push(`/${lowerCaseFirstChar(action!)}`);
-      }
-    }
-  }
+  // Replace the original parameters with filtered set
+  parameters.parameters = filteredParameters;
+
+  // Add the operation's own segment if present
+  addSegmentFragment(program, operation, pathFragments);
 }
 
 function getPathForOperation(
   program: Program,
   operation: OperationType,
   routeFragments: string[]
-): { path: string; pathFragment?: string; parameters: ModelTypeProperty[] } {
-  const parameters: ModelTypeProperty[] = [];
+): { path: string; pathFragment?: string; parameters: HttpOperationParameters } {
+  const parameters: HttpOperationParameters = getOperationParameters(program, operation);
+
   const pathFragments = [...routeFragments];
   const routePath = getRoutePath(program, operation);
   if (isAutoRoute(program, operation)) {
@@ -168,12 +258,11 @@ function getPathForOperation(
       pathFragments.push(routePath.path);
     }
 
-    // Gather operation parameters
-    parameters.push(...Array.from(operation.parameters.properties.values()));
-
     // Pull out path parameters to verify what's in the path string
     const paramByName = new Map(
-      parameters.filter((p) => isPathParam(program, p)).map((p) => [p.name, p])
+      parameters.parameters
+        .filter(({ type }) => type === "path")
+        .map(({ param }) => [param.name, param])
     );
 
     // Find path parameter names used in all route fragments
@@ -210,37 +299,31 @@ function getPathForOperation(
   };
 }
 
-function verbForOperationName(name: string): HttpVerb | undefined {
-  switch (name) {
-    case "list":
-      return "get";
-    case "create":
-      return "post";
-    case "read":
-      return "get";
-    case "update":
-      return "patch";
-    case "delete":
-      return "delete";
-    case "deleteAll":
-      return "delete";
-  }
-
-  return undefined;
-}
-
 function getVerbForOperation(
   program: Program,
   operation: OperationType,
-  parameters: ModelTypeProperty[]
+  parameters: HttpOperationParameters
 ): HttpVerb {
   const resourceOperation = getResourceOperation(program, operation);
-  return (
-    (resourceOperation && resourceOperationToVerb[resourceOperation.operation]) ||
-    getOperationVerb(program, operation) ||
-    verbForOperationName(operation.name) ||
-    (hasBody(program, parameters) ? "post" : "get")
-  );
+  const verb =
+    (resourceOperation && resourceOperationToVerb[resourceOperation.operation]) ??
+    getOperationVerb(program, operation) ??
+    // TODO: Enable this verb choice to be customized!
+    (getAction(program, operation) ? "post" : undefined);
+
+  if (verb !== undefined) {
+    return verb;
+  }
+
+  if (parameters.body) {
+    reportDiagnostic(program, {
+      code: "http-verb-missing-with-body",
+      format: { operationName: operation.name },
+      target: operation,
+    });
+  }
+
+  return "get";
 }
 
 function buildRoutes(
@@ -278,7 +361,7 @@ function buildRoutes(
   // Build all child routes and append them to the list, but don't recurse in
   // the global scope because that could pull in unwanted operations
   if (container.kind === "Namespace" && container.name !== "") {
-    let children: OperationContainer[] = [
+    const children: OperationContainer[] = [
       ...container.namespaces.values(),
       ...container.interfaces.values(),
     ];
@@ -286,7 +369,7 @@ function buildRoutes(
     const childRoutes = children.flatMap((child) =>
       buildRoutes(program, child, parentFragments, visitedOperations)
     );
-    operations.push.apply(operations, childRoutes);
+    for (const child of childRoutes) [operations.push(child)];
   }
 
   return operations;
@@ -339,7 +422,43 @@ export function getAllRoutes(program: Program): OperationDetails[] {
     operations = [...operations, ...newOps];
   }
 
+  validateRouteUnique(program, operations);
   return operations;
+}
+
+function validateRouteUnique(program: Program, operations: OperationDetails[]) {
+  const grouped = new Map<string, Map<HttpVerb, OperationDetails[]>>();
+
+  for (const operation of operations) {
+    const { verb, path } = operation;
+    let map = grouped.get(path);
+    if (map === undefined) {
+      map = new Map<HttpVerb, OperationDetails[]>();
+      grouped.set(path, map);
+    }
+
+    let list = map.get(verb);
+    if (list === undefined) {
+      list = [];
+      map.set(verb, list);
+    }
+
+    list.push(operation);
+  }
+
+  for (const [path, map] of grouped) {
+    for (const [verb, routes] of map) {
+      if (routes.length >= 2) {
+        for (const route of routes) {
+          reportDiagnostic(program, {
+            code: "duplicate-operation",
+            format: { path, verb, operationName: route.operation.name },
+            target: route.operation,
+          });
+        }
+      }
+    }
+  }
 }
 
 // TODO: Make this overridable by libraries
@@ -353,13 +472,10 @@ const resourceOperationToVerb: any = {
 };
 
 const autoRouteKey = Symbol();
-export function $autoRoute(program: Program, entity: Type) {
-  if (entity.kind !== "Namespace" && entity.kind !== "Interface" && entity.kind !== "Operation") {
-    reportDiagnostic(program, {
-      code: "decorator-wrong-type",
-      format: { decorator: "route", entityKind: entity.kind },
-      target: entity,
-    });
+export function $autoRoute({ program }: DecoratorContext, entity: Type) {
+  if (
+    !validateDecoratorTarget(program, entity, "@autoRoute", ["Namespace", "Interface", "Operation"])
+  ) {
     return;
   }
 

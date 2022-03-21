@@ -1,0 +1,71 @@
+{
+  "name": "@cadl-lang/versioning",
+  "entries": [
+    {
+      "version": "0.3.2",
+      "tag": "@cadl-lang/versioning_v0.3.2",
+      "date": "Wed, 09 Mar 2022 17:42:09 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@cadl-lang/compiler\" from `~0.28.0` to `~0.29.0`"
+          },
+          {
+            "comment": "Updating dependency \"@cadl-lang/eslint-config-cadl\" from `~0.1.0` to `~0.2.0`"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.3.1",
+      "tag": "@cadl-lang/versioning_v0.3.1",
+      "date": "Tue, 15 Feb 2022 22:35:02 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@cadl-lang/compiler\" from `~0.27.0` to `~0.28.0`"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.3.0",
+      "tag": "@cadl-lang/versioning_v0.3.0",
+      "date": "Mon, 14 Feb 2022 03:01:08 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Update decorators to take in api change"
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Bump dependency versions"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@cadl-lang/compiler\" from `~0.26.0` to `~0.27.0`"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.2.0",
+      "tag": "@cadl-lang/versioning_v0.2.0",
+      "date": "Fri, 04 Feb 2022 18:00:18 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add versioning framework"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@cadl-lang/compiler\" from `~0.25.0` to `~0.26.0`"
+          }
+        ]
+      }
+    }
+  ]
+}

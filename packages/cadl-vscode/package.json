@@ -1,6 +1,6 @@
 {
   "name": "cadl-vscode",
-  "version": "0.11.0",
+  "version": "0.13.0",
   "author": "Microsoft Corporation",
   "description": "Cadl Language Support for VS Code",
   "homepage": "https://github.com/Azure/adl",
@@ -83,6 +83,7 @@
     ]
   },
   "scripts": {
+    "clean": "rimraf ./dist ./dist-dev ./temp",
     "build": "npm run compile && npm run rollup && npm run generate-tmlanguage && npm run generate-third-party-notices && npm run package-vsix",
     "compile": "tsc -p .",
     "watch": "tsc -p . --watch",
@@ -91,21 +92,31 @@
     "generate-tmlanguage": "node scripts/generate-tmlanguage.js",
     "generate-third-party-notices": "node ../../eng/scripts/generate-third-party-notices",
     "rollup": "rollup --config --failAfterWarnings 2>&1",
-    "package-vsix": "vsce package --yarn"
+    "package-vsix": "vsce package --yarn",
+    "test": "mocha",
+    "test-official": "mocha --forbid-only"
   },
   "dependencies": {},
   "devDependencies": {
-    "@rollup/plugin-commonjs": "~17.1.0",
-    "@rollup/plugin-node-resolve": "~11.2.0",
+    "@rollup/plugin-commonjs": "~22.0.0-13",
+    "@rollup/plugin-node-resolve": "~13.1.3",
     "@types/mkdirp": "~1.0.1",
+    "@types/mocha": "~9.1.0",
     "@types/node": "~14.0.27",
     "@types/vscode": "~1.53.0",
+    "@cadl-lang/eslint-config-cadl": "~0.2.0",
+    "eslint": "^8.7.0",
+    "c8": "~7.11.0",
     "mkdirp": "~1.0.4",
-    "rollup": "~2.41.4",
-    "tmlanguage-generator": "0.2.1",
-    "typescript": "~4.4.4",
-    "vsce": "~1.85.1",
+    "mocha": "~9.2.0",
+    "rimraf": "~3.0.2",
+    "rollup": "~2.70.1",
+    "tmlanguage-generator": "~0.2.2",
+    "typescript": "~4.5.5",
+    "vsce": "~2.6.7",
     "vscode-languageclient": "~7.0.0",
+    "vscode-oniguruma": "~1.6.1",
+    "vscode-textmate": "~6.0.0",
     "watch": "~1.0.2"
   }
 }

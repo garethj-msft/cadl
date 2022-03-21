@@ -128,12 +128,14 @@ const diagnostics = {
     messages: {
       default: paramMessage`${"token"} expected.`,
       unexpected: paramMessage`Unexpected token ${"token"}`,
-      numericOrStringLiteral: "Expected numeric or string literal",
+      numericOrStringLiteral: "Expected numeric or string literal.",
       identifier: "Identifier expected.",
+      projectionDirection: "from or to expected.",
       expression: "Expression expected.",
       statement: "Statement expected.",
       property: "Property expected.",
       enumMember: "Enum member expected.",
+      mixesNotExtends: "`extends` is unexpected. Did you mean `mixes`?",
     },
   },
   "trailing-token": {
@@ -166,7 +168,28 @@ const diagnostics = {
       default: paramMessage`Cannot decorate ${"nodeName"}.`,
     },
   },
-
+  "invalid-projection": {
+    severity: "error",
+    messages: {
+      default: "Invalid projection",
+      wrongType: "Non-projection can't be used to project",
+      noTo: "Projection missing to projection",
+      projectionError: paramMessage`An error occurred when projecting this type: ${"message"}`,
+    },
+  },
+  "default-required": {
+    severity: "error",
+    messages: {
+      default: "Required template parameters must not follow optional template parameters",
+    },
+  },
+  "invalid-template-default": {
+    severity: "error",
+    messages: {
+      default:
+        "Template parameter defaults can only reference previously declared type parameters.",
+    },
+  },
   /**
    * Checker
    */
@@ -175,6 +198,8 @@ const diagnostics = {
     messages: {
       default: "Using must refer to a namespace",
       decorator: "Can't use a decorator",
+      function: "Can't use a function",
+      projection: "Can't use a projection",
     },
   },
   "invalid-type-ref": {
@@ -182,6 +207,7 @@ const diagnostics = {
     messages: {
       default: "Invalid type reference",
       decorator: "Can't put a decorator in a type",
+      function: "Can't use a function as a type",
     },
   },
   "invalid-template-args": {
@@ -248,6 +274,12 @@ const diagnostics = {
     severity: "error",
     messages: {
       default: "Models must extend other models.",
+    },
+  },
+  "extend-primitive": {
+    severity: "error",
+    messages: {
+      default: paramMessage`Cannot extend primitive types. Use 'model ${"modelName"} is ${"baseModelName"}' instead.`,
     },
   },
   "is-model": {
@@ -350,6 +382,17 @@ const diagnostics = {
       default: paramMessage`Duplicate name: "${"name"}"`,
     },
   },
+  "projections-are-experimental": {
+    severity: "warning",
+    messages: {
+      default:
+        "Projections are experimental - your code will need to change as this feature evolves.",
+    },
+  },
+
+  /**
+   * Binder
+   */
   "ambiguous-symbol": {
     severity: "error",
     messages: {
@@ -362,10 +405,20 @@ const diagnostics = {
       default: paramMessage`duplicate using of "${"usingName"}" namespace`,
     },
   },
-  "on-build-fail": {
+
+  /**
+   * Binder
+   */
+  "on-validate-fail": {
     severity: "error",
     messages: {
-      default: paramMessage`onBuild failed!\n\n${"error"}`,
+      default: paramMessage`onValidate failed with errors. ${"error"}`,
+    },
+  },
+  "emitter-not-found": {
+    severity: "error",
+    messages: {
+      default: paramMessage`Cannot find emitter with name ${"emitterName"} in ${"emitterPackage"}`,
     },
   },
 
@@ -376,10 +429,24 @@ const diagnostics = {
     severity: "error",
     messages: {
       default: paramMessage`Cannot apply ${"decorator"} decorator to ${"to"}`,
-      model: paramMessage`The ${"decorator"} decorator can only be applied to models.`,
-      operations: paramMessage`The ${"decorator"} decorator can only be applied to operations.`,
-      namespacesInterfacesOrOperations: paramMessage`The ${"decorator"} decorator can only be applied to namespaces, interfaces, or operations.`,
-      operationsOrModelProps: paramMessage`The ${"decorator"} decorator can only be applied to operations or model properties.`,
+    },
+  },
+  "invalid-argument": {
+    severity: "error",
+    messages: {
+      default: paramMessage`Argument '${"value"}' of type '${"actual"}' is not assignable to parameter of type '${"expected"}'`,
+    },
+  },
+  "invalid-argument-count": {
+    severity: "error",
+    messages: {
+      default: paramMessage`Expected ${"expected"} arguments, but got ${"actual"}.`,
+    },
+  },
+  "known-values-invalid-enum": {
+    severity: "error",
+    messages: {
+      default: paramMessage`Enum cannot be used on this type. Member ${"member"} is not assignable to type ${"type"}.`,
     },
   },
 

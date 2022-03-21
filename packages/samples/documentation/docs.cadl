@@ -24,23 +24,24 @@ model RespWithDocs {
   value: int32;
 }
 
-// Will have default error description
+@error
 model Error {
   code: int32;
 }
 
 @doc("Error from @doc")
+@error
 model ErrorWithDocs {
   code: int32;
 }
 
 model NotFoundResp {
-  @header statusCode: 404;
+  @statusCode _: 404;
   details: string;
 }
 
 @doc("Not found")
 model NotFoundWithDocsResp {
-  @header statusCode: 404;
+  @statusCode _: 404;
   details: string;
 }

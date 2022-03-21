@@ -9,11 +9,11 @@
     "/bool/true": {
       "get": {
         "operationId": "bool_getTrue",
-        "summary": "Get true Boolean value",
+        "description": "Get true Boolean value",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "A successful response",
+            "description": "Ok",
             "content": {
               "application/json": {
                 "schema": {
@@ -39,20 +39,11 @@
       },
       "put": {
         "operationId": "bool_putTrue",
-        "summary": "Set Boolean value true",
+        "description": "Set Boolean value true",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "The request has succeeded.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "x-cadl-name": "(anonymous model)"
-                }
-              }
-            }
+            "description": "Ok"
           },
           "default": {
             "description": "Error",
@@ -82,11 +73,11 @@
     "/bool/false": {
       "get": {
         "operationId": "bool_getFalse",
-        "summary": "Get true Boolean false",
+        "description": "Get true Boolean false",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "A successful response",
+            "description": "Ok",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,11 +103,11 @@
       },
       "put": {
         "operationId": "bool_putFalse",
-        "summary": "Set Boolean value false",
+        "description": "Set Boolean value false",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "A successful response",
+            "description": "Ok",
             "content": {
               "application/json": {
                 "schema": {
@@ -153,11 +144,11 @@
     "/bool/null": {
       "get": {
         "operationId": "bool_getNull",
-        "summary": "Get null Boolean value",
+        "description": "Get null Boolean value",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "A successful response",
+            "description": "Ok",
             "content": {
               "application/json": {
                 "schema": {
@@ -167,7 +158,7 @@
             }
           },
           "204": {
-            "description": "No content"
+            "description": "No Content"
           },
           "default": {
             "description": "Error",
@@ -185,11 +176,11 @@
     "/bool/invalid": {
       "get": {
         "operationId": "bool_getInvalid",
-        "summary": "Get invalid Boolean value",
+        "description": "Get invalid Boolean value",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "A successful response",
+            "description": "Ok",
             "content": {
               "application/json": {
                 "schema": {

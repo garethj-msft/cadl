@@ -1,8 +1,8 @@
 import assert from "assert";
 import { CharCode } from "../core/charcode.js";
-import { formatDiagnostic, logDiagnostics, logVerboseTestOutput } from "../core/diagnostics.js";
-import { hasParseError, NodeFlags, parse, visitChildren } from "../core/parser.js";
-import { CadlScriptNode, Node, SourceFile, SyntaxKind } from "../core/types.js";
+import { formatDiagnostic, logVerboseTestOutput } from "../core/diagnostics.js";
+import { hasParseError, parse, visitChildren } from "../core/parser.js";
+import { CadlScriptNode, Node, NodeFlags, SourceFile, SyntaxKind } from "../core/types.js";
 
 describe("compiler: syntax", () => {
   describe("import statements", () => {
@@ -117,7 +117,7 @@ describe("compiler: syntax", () => {
     ]);
     parseErrorEach([
       ["model foo extends { }", [/Identifier expected/]],
-      ["model foo extends bar, baz { }", [/\'{' expected/]],
+      ["model foo extends bar, baz { }", [/'{' expected/]],
       ["model foo extends = { }", [/Identifier expected/]],
       ["model foo extends bar = { }", [/'{' expected/]],
     ]);
@@ -138,8 +138,19 @@ describe("compiler: syntax", () => {
       "interface Foo mixes Bar, Baz<T> { }",
       "interface Foo { foo(): int32; }",
       "interface Foo { foo(): int32; bar(): int32; }",
+      "interface Foo { op foo(): int32; op bar(): int32; baz(): int32; }",
+    ]);
+
+    parseErrorEach([
+      ["interface Foo<T> extends Bar<T> {}", [/mixes/]],
+      ["interface X {", [/'}' expected/]],
+      ["interface X { foo(): string; interface Y", [/'}' expected/]],
+      ["interface X { foo(a: string", [/'\)' expected/]],
+      ["interface X { foo(@dec", [/Property expected/]],
+      ["interface X { foo(#suppress x", [/Property expected/]],
     ]);
   });
+
   describe("model expressions", () => {
     parseEach(['model Car { engine: { type: "v8" } }']);
   });
@@ -445,7 +456,7 @@ describe("compiler: syntax", () => {
   describe("sample regressions", () => {
     parseEach([
       [
-        `/* \\n <-- before string! */ @format("\\\\w") model M {}`,
+        `/* \\n <-- before string! */ @pattern("\\\\w") model M {}`,
         (node) => {
           assert(node.statements[0].kind === SyntaxKind.ModelStatement);
           assert(node.statements[0].decorators[0].arguments[0].kind === SyntaxKind.StringLiteral);
@@ -481,6 +492,97 @@ describe("compiler: syntax", () => {
       ["alias Foo<T> = X |", [/Expression expected/]],
       ["alias =", [/Identifier expected/]],
     ]);
+  });
+
+  describe("directives", () => {
+    describe("emit single diagnostic when the parameters are not expected types", () => {
+      parseErrorEach(
+        [
+          ["#suppress foo;\nmodel Foo {}", [/Unexpected token Semicolon/]],
+          ["#suppress foo 123\nmodel Foo {}", [/Unexpected token NumericLiteral/]],
+        ],
+        { strict: true }
+      );
+    });
+  });
+
+  describe("projections", () => {
+    describe("selectors", () => {
+      const selectors = ["model", "op", "interface", "union", "someId"];
+      const codes = selectors.map((s) => `projection ${s}#tag { }`);
+      parseEach(codes);
+    });
+
+    describe("direction", () => {
+      parseEach([`projection model#tag { to { } }`, `projection model #tag { from { } }`]);
+    });
+
+    describe("projection parameters", () => {
+      parseEach([
+        `projection model#v { to(version) { } }`,
+        `projection model#foo{ from(bar, baz) { } }`,
+      ]);
+    });
+    describe("projection expressions", () => {
+      const exprs = [
+        `x || y`,
+        `x || y || z`,
+        `x && y`,
+        `x && y && z`,
+        `x && y || z && q`,
+        `x || y && z || q`,
+        `x * y`,
+        `x + y`,
+        `x / y`,
+        `x - y`,
+        `x + y * z / a + b - c`,
+        `x <= y`,
+        `x >= y`,
+        `x > y`,
+        `x < y`,
+        `!x`,
+        `x()`,
+        `x(a, b, c)`,
+        `x.y`,
+        `x().y`,
+        `x().y()`,
+        `x()()`,
+        `x()(T)`,
+        `x(T)()`,
+        `x(T).y()(T)`,
+        `self`,
+        `if x { }`,
+        `if x { a; b; } else { c; }`,
+        `if x > 1 { }`,
+        `if if x > 1 { a; } else { b; } { c; } else { d; }`,
+        `(x) => { x + 1; }`,
+        `(x) => { if x { x; } else { y; }; }`,
+        `1`,
+        `"string"`,
+        `{ x: 1 }`,
+        `{ x: if 1 { Foo; } else { Bar; } }`,
+        `[a, b]`,
+        `(a)`,
+        `(a + 1)`,
+      ];
+      const codes = exprs.map((exp) => `projection foo#tag { to { ${exp}; } }`);
+      parseEach(codes);
+    });
+
+    describe("recovery", () => {
+      parseErrorEach([
+        [`projection `, [/identifier, 'model', 'op', 'interface', 'union', or 'enum' expected/]],
+        [`projection x `, [/'#' expected/]],
+        [`projection x#`, [/Identifier expected/]],
+        [`projection x#f`, [/'{' expected/]],
+        [`projection x#f {`, [/'}' expected/]],
+        [`projection x#f { asdf`, [/from or to expected/]],
+        [`projection x#f { to (`, [/'\)' expected/]],
+        [`projection x#f { to @`, [/'{' expected/]],
+        [`projection x#f { to {`, [/} expected/]],
+        [`projection x#f { to {}`, [/'}' expected/]],
+      ]);
+    });
   });
 });
 
@@ -535,9 +637,19 @@ function checkPositioning(node: Node, file: SourceFile) {
   });
 }
 
-function parseErrorEach(cases: [string, RegExp[], Callback?][], significantWhitespace = false) {
+/**
+ *
+ * @param cases Test cases
+ * @param options {
+ *   strict: Make sure there is exactly the same amount of diagnostics reported as the number of matches.
+ * }
+ */
+function parseErrorEach(
+  cases: [string, RegExp[], Callback?][],
+  options: { strict?: boolean } = {}
+) {
   for (const [code, matches, callback] of cases) {
-    it(`doesn't parse ${shorten(code)}`, () => {
+    it(`doesn't parse '${shorten(code)}'`, () => {
       logVerboseTestOutput("=== Source ===");
       logVerboseTestOutput(code);
 
@@ -549,8 +661,19 @@ function parseErrorEach(cases: [string, RegExp[], Callback?][], significantWhite
       dumpAST(astNode);
 
       logVerboseTestOutput("\n=== Diagnostics ===");
-      logVerboseTestOutput((log) => logDiagnostics(astNode.parseDiagnostics, log));
+      logVerboseTestOutput((log) => {
+        for (const each of astNode.parseDiagnostics) {
+          log(formatDiagnostic(each));
+        }
+      });
       assert.notStrictEqual(astNode.parseDiagnostics.length, 0, "no diagnostics reported");
+      if (options.strict) {
+        assert.strictEqual(
+          astNode.parseDiagnostics.length,
+          matches.length,
+          "More diagnostics reported than expected."
+        );
+      }
       let i = 0;
       for (const match of matches) {
         assert.match(astNode.parseDiagnostics[i++].message, match);
@@ -578,7 +701,7 @@ function dumpAST(astNode: Node, file?: SourceFile) {
   logVerboseTestOutput((log) => {
     hasParseError(astNode); // force flags to initialize
     const json = JSON.stringify(astNode, replacer, 2);
-    log.log({ level: "info", message: json });
+    log(json);
   });
 
   function replacer(key: string, value: any) {

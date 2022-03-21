@@ -1,8 +1,7 @@
 import { match, rejects, strictEqual } from "assert";
-import { getSourceLocation } from "../../core/index.js";
-import { Program } from "../../core/program";
+import { DecoratorContext, getSourceLocation } from "../../core/index.js";
 import { ModelType } from "../../core/types.js";
-import { createTestHost, TestHost } from "../test-host.js";
+import { createTestHost, expectDiagnosticEmpty, TestHost } from "../../testing/index.js";
 
 describe("compiler: using statements", () => {
   let testHost: TestHost;
@@ -132,7 +131,7 @@ describe("compiler: using statements", () => {
     );
 
     const diagnostics = await testHost.diagnose("./");
-    strictEqual(diagnostics.length, 0);
+    expectDiagnosticEmpty(diagnostics);
   });
 
   it("throws errors for duplicate imported usings", async () => {
@@ -195,7 +194,7 @@ describe("compiler: using statements", () => {
     );
 
     const diagnostics = await testHost.diagnose("./");
-    strictEqual(diagnostics.length, 0);
+    expectDiagnosticEmpty(diagnostics);
   });
 
   it("report ambigous diagnostics when using name present in multiple using", async () => {
@@ -364,8 +363,8 @@ describe("compiler: using statements", () => {
 
   it("Cadl namespace is automatically using'd in eval", async () => {
     testHost.addJsFile("test.js", {
-      $eval(p: Program) {
-        p.evalCadlScript(`namespace Bar; model A { a: int32 };`);
+      $eval({ program }: DecoratorContext) {
+        program.evalCadlScript(`namespace Bar; model A { a: int32 };`);
       },
     });
     testHost.addCadlFile(
@@ -383,8 +382,8 @@ describe("compiler: using statements", () => {
 
   it("works with eval", async () => {
     testHost.addJsFile("test.js", {
-      async $eval(p: Program) {
-        await p.evalCadlScript(`using Foo; model A { a: X };`);
+      async $eval({ program }: DecoratorContext) {
+        await program.evalCadlScript(`using Foo; model A { a: X };`);
       },
     });
     testHost.addCadlFile(

@@ -2,14 +2,15 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Pet Store Service",
-    "version": "2021-03-25"
+    "version": "2021-03-25",
+    "description": "This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters."
   },
   "tags": [],
   "paths": {
     "/pets/{petId}": {
       "delete": {
         "operationId": "Pets_delete",
-        "summary": "Delete a pet.",
+        "description": "Delete a pet.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PetId"
@@ -17,16 +18,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The request has succeeded.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "x-cadl-name": "(anonymous model)"
-                }
-              }
-            }
+            "description": "Ok"
           },
           "default": {
             "description": "Error",
@@ -42,7 +34,7 @@
       },
       "get": {
         "operationId": "Pets_read",
-        "summary": "Returns a pet. Supports eTags.",
+        "description": "Returns a pet. Supports eTags.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PetId"
@@ -85,7 +77,7 @@
     "/pets": {
       "get": {
         "operationId": "Pets_list",
-        "summary": "<blink>List pets.</blink>",
+        "description": "<blink>List pets.</blink>",
         "parameters": [
           {
             "name": "nextLink",
@@ -102,7 +94,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponsePage_Pet"
+                  "$ref": "#/components/schemas/PetListResults"
                 }
               }
             }
@@ -182,7 +174,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponsePage_Toy"
+                  "$ref": "#/components/schemas/ToyListResults"
                 }
               }
             }
@@ -231,7 +223,7 @@
           "message"
         ]
       },
-      "ResponsePage_Pet": {
+      "PetListResults": {
         "type": "object",
         "properties": {
           "items": {
@@ -270,7 +262,7 @@
           "age"
         ]
       },
-      "ResponsePage_Toy": {
+      "ToyListResults": {
         "type": "object",
         "properties": {
           "items": {

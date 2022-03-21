@@ -25,14 +25,14 @@ describe("compiler: prettier formatter", () => {
   it("format imports", () => {
     assertFormat({
       code: `
-    import   "@cadl-lang/rest";
-import        "@azure-tools/cadl-autorest";
-import "@azure-tools/cadl-rpaas"  ;
+    import   "@scope/package1";
+import        "@scope/package2";
+import "@scope/package3"  ;
 `,
       expected: `
-import "@cadl-lang/rest";
-import "@azure-tools/cadl-autorest";
-import "@azure-tools/cadl-rpaas";
+import "@scope/package1";
+import "@scope/package2";
+import "@scope/package3";
 `,
     });
   });
@@ -54,10 +54,10 @@ op test(): {
   it("format using", () => {
     assertFormat({
       code: `
-using       Azure.Arm  
+using       Some.Namespace  
 `,
       expected: `
-using Azure.Arm;
+using Some.Namespace;
 `,
     });
   });
@@ -236,6 +236,18 @@ model Foo {
   });
 
   describe("comments", () => {
+    it("format comment at position 0", () => {
+      assertFormat({
+        code: `// This comment is at position 0.
+model Foo {}
+`,
+        expected: `
+// This comment is at position 0.
+model Foo {}
+`,
+      });
+    });
+
     it("format single line comments", () => {
       assertFormat({
         code: `
@@ -514,6 +526,35 @@ enum Foo {
 enum Bar {
   A: "a",
   B: "b",
+}
+`,
+      });
+    });
+
+    it("seperate members if there is decorators", () => {
+      assertFormat({
+        code: `
+enum      Foo       {   
+  @doc("foo") 
+        A:   "a",    @doc("bar") 
+           B    : "b", 
+
+
+
+      @doc("third")   
+       C    : "c"}
+
+`,
+        expected: `
+enum Foo {
+  @doc("foo")
+  A: "a",
+
+  @doc("bar")
+  B: "b",
+
+  @doc("third")
+  C: "c",
 }
 `,
       });
@@ -797,12 +838,12 @@ namespace MyNamespace {
       assertFormat({
         code: `
 namespace Foo {
-  @get("inline")  op       simple(): string;
+  @route("inline")  op       simple(): string;
 }
       `,
         expected: `
 namespace Foo {
-  @get("inline") op simple(): string;
+  @route("inline") op simple(): string;
 }
       `,
       });
@@ -812,13 +853,13 @@ namespace Foo {
       assertFormat({
         code: `
 namespace Foo {
-  @get("inline")
+  @route("inline")
          op  my(): string;
 }
       `,
         expected: `
 namespace Foo {
-  @get("inline")
+  @route("inline")
   op my(): string;
 }
       `,
@@ -829,12 +870,12 @@ namespace Foo {
       assertFormat({
         code: `
 namespace Foo {
-  @get("inline") @mark @bar op       my(): string;
+  @route("inline") @mark @bar op       my(): string;
 }
       `,
         expected: `
 namespace Foo {
-  @get("inline")
+  @route("inline")
   @mark
   @bar
   op my(): string;
@@ -856,6 +897,21 @@ namespace Foo {
   op my(parm: string): string;
 }
       `,
+      });
+    });
+  });
+
+  describe("interfaces", () => {
+    it("removes op prefix", () => {
+      assertFormat({
+        code: `
+interface Foo {
+  op foo(): int32;
+}`,
+        expected: `
+interface Foo {
+  foo(): int32;
+}`,
       });
     });
   });

@@ -1,13 +1,20 @@
-import { dirname, extname, isAbsolute, join, resolve } from "path";
-import resolveModule from "resolve";
-import { fileURLToPath } from "url";
 import { createBinder } from "./binder.js";
 import { Checker, createChecker } from "./checker.js";
 import { createSourceFile, getSourceLocation } from "./diagnostics.js";
+import { SymbolFlags } from "./index.js";
 import { createLogger } from "./logger.js";
 import { createDiagnostic } from "./messages.js";
+import { resolveModule } from "./module-resolver.js";
 import { CompilerOptions } from "./options.js";
-import { parse } from "./parser.js";
+import { isImportStatement, parse } from "./parser.js";
+import {
+  getAnyExtensionFromPath,
+  getDirectoryPath,
+  isPathAbsolute,
+  joinPaths,
+  resolvePath,
+} from "./path-utils.js";
+import { createProjector } from "./projector.js";
 import {
   CadlScriptNode,
   CompilerHost,
@@ -15,11 +22,16 @@ import {
   DiagnosticTarget,
   Directive,
   DirectiveExpressionNode,
-  JsSourceFile,
+  Emitter,
+  EmitterOptions,
+  JsSourceFileNode,
   LiteralType,
   Logger,
   Node,
+  NodeFlags,
   NoTarget,
+  ProjectionApplication,
+  Projector,
   SourceFile,
   Sym,
   SymbolTable,
@@ -33,22 +45,152 @@ export interface Program {
   mainFile?: CadlScriptNode;
   /** All source files in the program, keyed by their file path. */
   sourceFiles: Map<string, CadlScriptNode>;
-  jsSourceFiles: Map<string, JsSourceFile>;
+  jsSourceFiles: Map<string, JsSourceFileNode>;
   literalTypes: Map<string | number | boolean, LiteralType>;
   host: CompilerHost;
   logger: Logger;
   checker?: Checker;
+  emitters: EmitterRef[];
   readonly diagnostics: readonly Diagnostic[];
   loadCadlScript(cadlScript: SourceFile): Promise<CadlScriptNode>;
   evalCadlScript(cadlScript: string): void;
-  onBuild(cb: (program: Program) => void): Promise<void> | void;
+  onValidate(cb: (program: Program) => void): Promise<void> | void;
   getOption(key: string): string | undefined;
-  stateSet(key: Symbol): Set<any>;
-  stateMap(key: Symbol): Map<any, any>;
+  stateSet(key: symbol): Set<Type>;
+  stateSets: Map<symbol, Set<Type>>;
+  stateMap(key: symbol): Map<Type, any>;
+  stateMaps: Map<symbol, Map<Type, any>>;
   hasError(): boolean;
   reportDiagnostic(diagnostic: Diagnostic): void;
-  reportDiagnostics(diagnostics: Diagnostic[]): void;
-  reportDuplicateSymbols(symbols: SymbolTable<Sym> | undefined): void;
+  reportDiagnostics(diagnostics: readonly Diagnostic[]): void;
+  reportDuplicateSymbols(symbols: SymbolTable | undefined): void;
+  enableProjections(projections: ProjectionApplication[], startNode?: Type): Projector;
+  disableProjections(): void;
+  currentProjector?: Projector;
+}
+
+interface EmitterRef {
+  emitter: Emitter;
+  options: EmitterOptions;
+}
+
+class StateMap<V> implements Map<Type, V> {
+  private internalState = new Map<undefined | Projector, Map<Type, V>>();
+  constructor(public program: Program, public key: symbol) {}
+
+  has(t: Type) {
+    return this.dispatch(t)?.has(t) ?? false;
+  }
+
+  set(t: Type, v: any) {
+    this.dispatch(t).set(t, v);
+    return this;
+  }
+
+  get(t: Type) {
+    return this.dispatch(t).get(t);
+  }
+
+  delete(t: Type) {
+    return this.dispatch(t).delete(t);
+  }
+
+  forEach(cb: (value: V, key: Type, map: Map<Type, V>) => void, thisArg?: any) {
+    this.dispatch().forEach(cb, thisArg);
+    return this;
+  }
+
+  get size() {
+    return this.dispatch().size;
+  }
+
+  clear() {
+    return this.dispatch().clear();
+  }
+
+  entries() {
+    return this.dispatch().entries();
+  }
+
+  values() {
+    return this.dispatch().values();
+  }
+
+  keys() {
+    return this.dispatch().keys();
+  }
+
+  [Symbol.iterator]() {
+    return this.entries();
+  }
+
+  [Symbol.toStringTag]: "StateMap";
+
+  dispatch(keyType?: Type): Map<Type, V> {
+    const key = keyType ? keyType.projector : this.program.currentProjector;
+    if (!this.internalState.has(key)) {
+      this.internalState.set(key, new Map());
+    }
+
+    return this.internalState.get(key)!;
+  }
+}
+class StateSet implements Set<Type> {
+  private internalState = new Map<undefined | Projector, Set<Type>>();
+  constructor(public program: Program, public key: symbol) {}
+
+  has(t: Type) {
+    return this.dispatch(t)?.has(t) ?? false;
+  }
+
+  add(t: Type) {
+    this.dispatch(t).add(t);
+    return this;
+  }
+
+  delete(t: Type) {
+    return this.dispatch(t).delete(t);
+  }
+
+  forEach(cb: (value: Type, value2: Type, set: Set<Type>) => void, thisArg?: any) {
+    this.dispatch().forEach(cb, thisArg);
+    return this;
+  }
+
+  get size() {
+    return this.dispatch().size;
+  }
+
+  clear() {
+    return this.dispatch().clear();
+  }
+
+  values() {
+    return this.dispatch().values();
+  }
+
+  keys() {
+    return this.dispatch().keys();
+  }
+
+  entries() {
+    return this.dispatch().entries();
+  }
+
+  [Symbol.iterator]() {
+    return this.values();
+  }
+
+  [Symbol.toStringTag]: "StateSet";
+
+  dispatch(keyType?: Type): Set<Type> {
+    const key = keyType ? keyType.projector : this.program.currentProjector;
+    if (!this.internalState.has(key)) {
+      this.internalState.set(key, new Set());
+    }
+
+    return this.internalState.get(key)!;
+  }
 }
 
 export async function createProgram(
@@ -56,12 +198,14 @@ export async function createProgram(
   mainFile: string,
   options: CompilerOptions = {}
 ): Promise<Program> {
-  const buildCbs: any = [];
-  const stateMaps = new Map<Symbol, Map<any, any>>();
-  const stateSets = new Map<Symbol, Set<any>>();
+  const validateCbs: any = [];
+  const stateMaps = new Map<symbol, StateMap<any>>();
+  const stateSets = new Map<symbol, StateSet>();
   const diagnostics: Diagnostic[] = [];
   const seenSourceFiles = new Set<string>();
   const duplicateSymbols = new Set<Sym>();
+  let currentProjector: Projector | undefined;
+  const emitters: EmitterRef[] = [];
   let error = false;
 
   const logger = createLogger({ sink: host.logSink, level: options.diagnosticLevel });
@@ -74,19 +218,30 @@ export async function createProgram(
     host,
     diagnostics,
     logger,
+    emitters,
     loadCadlScript,
     evalCadlScript,
     getOption,
     stateMap,
+    stateMaps,
     stateSet,
+    stateSets,
     reportDiagnostic,
     reportDiagnostics,
     reportDuplicateSymbols,
     hasError() {
       return error;
     },
-    onBuild(cb) {
-      buildCbs.push(cb);
+    onValidate(cb) {
+      validateCbs.push(cb);
+    },
+    enableProjections,
+    disableProjections,
+    get currentProjector() {
+      return currentProjector;
+    },
+    set currentProjector(v) {
+      currentProjector = v;
     },
   };
 
@@ -100,23 +255,33 @@ export async function createProgram(
   // Load additional imports prior to compilation
   if (options.additionalImports) {
     const importScript = options.additionalImports.map((i) => `import "${i}";`).join("\n");
-    const sourceFile = createSourceFile(importScript, `__additional_imports`);
+    const sourceFile = createSourceFile(
+      importScript,
+      joinPaths(getDirectoryPath(mainFile), `__additional_imports`)
+    );
     await loadCadlScript(sourceFile);
   }
 
-  await loadMain(mainFile, options);
+  const resolvedMain = await loadMain(mainFile, options);
+
+  if (resolvedMain && options.emitters) {
+    await loadEmitters(resolvedMain, options.emitters);
+  }
 
   const checker = (program.checker = createChecker(program));
   program.checker.checkProgram();
 
-  for (const cb of buildCbs) {
+  if (program.hasError()) {
+    return program;
+  }
+  for (const cb of validateCbs) {
     try {
       await cb(program);
     } catch (error: any) {
       if (options.designTimeBuild) {
         program.reportDiagnostic(
           createDiagnostic({
-            code: "on-build-fail",
+            code: "on-validate-fail",
             format: { error: error.stack },
             target: NoTarget,
           })
@@ -127,25 +292,40 @@ export async function createProgram(
     }
   }
 
+  if (program.hasError()) {
+    return program;
+  }
+
+  for (const instance of emitters) {
+    await instance.emitter(program, instance.options);
+  }
+
   return program;
 
   async function loadStandardLibrary(program: Program) {
     for (const dir of host.getLibDirs()) {
-      await loadDirectory(dir);
+      await loadDirectory(dir, NoTarget);
     }
   }
 
-  async function loadDirectory(dir: string, diagnosticTarget?: DiagnosticTarget) {
-    const pkgJsonPath = resolve(dir, "package.json");
-    let [pkg] = await loadFile(host, pkgJsonPath, JSON.parse, program.reportDiagnostic, {
+  async function loadDirectory(
+    dir: string,
+    diagnosticTarget: DiagnosticTarget | typeof NoTarget
+  ): Promise<string> {
+    const pkgJsonPath = resolvePath(dir, "package.json");
+    const [pkg] = await loadFile(host, pkgJsonPath, JSON.parse, program.reportDiagnostic, {
       allowFileNotFound: true,
       diagnosticTarget,
     });
-    const mainFile = resolve(dir, typeof pkg?.cadlMain === "string" ? pkg.cadlMain : "main.cadl");
+    const mainFile = resolvePath(
+      dir,
+      typeof pkg?.cadlMain === "string" ? pkg.cadlMain : "main.cadl"
+    );
     await loadCadlFile(mainFile, diagnosticTarget);
+    return mainFile;
   }
 
-  async function loadCadlFile(path: string, diagnosticTarget?: DiagnosticTarget) {
+  async function loadCadlFile(path: string, diagnosticTarget: DiagnosticTarget | typeof NoTarget) {
     if (seenSourceFiles.has(path)) {
       return;
     }
@@ -160,8 +340,14 @@ export async function createProgram(
     }
   }
 
-  async function loadJsFile(path: string, diagnosticTarget: DiagnosticTarget) {
-    if (program.jsSourceFiles.has(path)) return;
+  async function loadJsFile(
+    path: string,
+    diagnosticTarget: DiagnosticTarget | typeof NoTarget
+  ): Promise<JsSourceFileNode | undefined> {
+    const sourceFile = program.jsSourceFiles.get(path);
+    if (sourceFile !== undefined) {
+      return sourceFile;
+    }
 
     const file = createSourceFile("", path);
     const exports = await doIO(host.getJsImport, path, program.reportDiagnostic, {
@@ -170,19 +356,40 @@ export async function createProgram(
     });
 
     if (!exports) {
-      return;
+      return undefined;
     }
 
-    const sourceFile: JsSourceFile = {
-      kind: "JsSourceFile",
+    return {
+      kind: SyntaxKind.JsSourceFile,
+      id: {
+        kind: SyntaxKind.Identifier,
+        sv: "",
+        pos: 0,
+        end: 0,
+        symbol: undefined as any,
+        flags: NodeFlags.Synthetic,
+      },
       esmExports: exports,
       file,
-      namespaces: [],
+      namespaceSymbols: [],
+      symbol: undefined as any,
+      pos: 0,
+      end: 0,
+      flags: NodeFlags.None,
     };
+  }
 
-    program.jsSourceFiles.set(path, sourceFile);
-
-    binder.bindJsSourceFile(sourceFile);
+  /**
+   * Import the Javascript files decorator and lifecycle hooks.
+   */
+  async function importJsFile(path: string, diagnosticTarget: DiagnosticTarget | typeof NoTarget) {
+    const file = await loadJsFile(path, diagnosticTarget);
+    if (file !== undefined) {
+      program.jsSourceFiles.set(path, file);
+      if (file.symbol === undefined) {
+        binder.bindJsSourceFile(file);
+      }
+    }
   }
 
   async function loadCadlScript(cadlScript: SourceFile): Promise<CadlScriptNode> {
@@ -195,7 +402,7 @@ export async function createProgram(
     program.reportDiagnostics(sourceFile.parseDiagnostics);
     program.sourceFiles.set(cadlScript.path, sourceFile);
     binder.bindSourceFile(sourceFile);
-    await loadImports(sourceFile);
+    await loadScriptImports(sourceFile);
     return sourceFile;
   }
 
@@ -223,35 +430,43 @@ export async function createProgram(
   function evalCadlScript(script: string): void {
     const sourceFile = createSourceFile(script, `__virtual_file_${++virtualFileCount}`);
     const cadlScript = loadCadlScriptSync(sourceFile);
-    checker.mergeCadlSourceFile(cadlScript);
+    checker.mergeSourceFile(cadlScript);
     checker.setUsingsForFile(cadlScript);
     for (const ns of cadlScript.namespaces) {
-      const mergedNs = checker.getMergedNamespace(ns);
-      reportDuplicateSymbols(mergedNs.exports);
+      const mergedSym = checker.getMergedSymbol(ns.symbol)!;
+      reportDuplicateSymbols(mergedSym.exports);
     }
-    reportDuplicateSymbols(checker.getGlobalNamespaceType().node!.exports);
+    reportDuplicateSymbols(checker.getGlobalNamespaceNode().symbol.exports);
   }
 
-  async function loadImports(file: CadlScriptNode) {
+  async function loadScriptImports(file: CadlScriptNode) {
     // collect imports
-    for (const stmt of file.statements) {
-      if (stmt.kind !== SyntaxKind.ImportStatement) break;
-      const path = stmt.path.value;
-      const basedir = dirname(file.file.path);
+    const basedir = getDirectoryPath(file.file.path);
+    await loadImports(
+      file.statements.filter(isImportStatement).map((x) => ({ path: x.path.value, target: x })),
+      basedir
+    );
+  }
 
-      let target: string;
+  async function loadImports(
+    imports: Array<{ path: string; target: DiagnosticTarget | typeof NoTarget }>,
+    relativeTo: string
+  ) {
+    // collect imports
+    for (const { path, target } of imports) {
+      let importFilePath: string;
       if (path.startsWith("./") || path.startsWith("../")) {
-        target = resolve(basedir, path);
-      } else if (isAbsolute(path)) {
-        target = path;
+        importFilePath = resolvePath(relativeTo, path);
+      } else if (isPathAbsolute(path)) {
+        importFilePath = resolvePath(path);
       } else {
         try {
           // attempt to resolve a node module with this name
-          target = await resolveModuleSpecifier(path, basedir);
+          importFilePath = await resolveCadlLibrary(path, relativeTo);
         } catch (e: any) {
           if (e.code === "MODULE_NOT_FOUND") {
             program.reportDiagnostic(
-              createDiagnostic({ code: "library-not-found", format: { path }, target: stmt })
+              createDiagnostic({ code: "library-not-found", format: { path }, target })
             );
             continue;
           } else {
@@ -260,17 +475,70 @@ export async function createProgram(
         }
       }
 
-      const ext = extname(target);
+      const ext = getAnyExtensionFromPath(importFilePath);
 
       if (ext === "") {
-        await loadDirectory(target, stmt);
+        await loadDirectory(importFilePath, target);
       } else if (ext === ".js" || ext === ".mjs") {
-        await loadJsFile(target, stmt);
+        await importJsFile(importFilePath, target);
       } else if (ext === ".cadl") {
-        await loadCadlFile(target, stmt);
+        await loadCadlFile(importFilePath, target);
       } else {
-        program.reportDiagnostic(createDiagnostic({ code: "invalid-import", target: stmt }));
+        program.reportDiagnostic(createDiagnostic({ code: "invalid-import", target: target }));
       }
+    }
+  }
+
+  async function loadEmitters(mainFile: string, emitters: string[]) {
+    for (const emitterPackage of emitters) {
+      await loadEmitter(mainFile, emitterPackage, "default");
+    }
+  }
+
+  async function loadEmitter(mainFile: string, emitterPackage: string, emitterName: string) {
+    const basedir = getDirectoryPath(mainFile);
+    let module;
+    try {
+      // attempt to resolve a node module with this name
+      module = await resolveCadlLibrary(emitterPackage, basedir);
+    } catch (e: any) {
+      if (e.code === "MODULE_NOT_FOUND") {
+        program.reportDiagnostic(
+          createDiagnostic({
+            code: "library-not-found",
+            format: { path: emitterPackage },
+            target: NoTarget,
+          })
+        );
+        return;
+      } else {
+        throw e;
+      }
+    }
+    const file = await loadJsFile(module, NoTarget);
+
+    if (file === undefined) {
+      program.reportDiagnostic(
+        createDiagnostic({
+          code: "emitter-not-found",
+          format: { emitterPackage, emitterName },
+          target: NoTarget,
+        })
+      );
+      return;
+    }
+
+    const emitterFunction = file.esmExports.$onEmit;
+    if (emitterFunction !== undefined) {
+      emitters.push({ emitter: emitterFunction, options: { name: emitterName } });
+    } else {
+      program.reportDiagnostic(
+        createDiagnostic({
+          code: "emitter-not-found",
+          format: { emitterPackage, emitterName },
+          target: NoTarget,
+        })
+      );
     }
   }
 
@@ -278,105 +546,56 @@ export async function createProgram(
    * resolves a module specifier like "myLib" to an absolute path where we can find the main of
    * that module, e.g. "/cadl/node_modules/myLib/main.cadl".
    */
-  function resolveModuleSpecifier(
-    specifier: string,
-    basedir: string,
-    useCadlMain = true
-  ): Promise<string> {
-    return new Promise((resolveP, rejectP) => {
-      resolveModule(
-        specifier,
-        {
-          // default node semantics are preserveSymlinks: false
-          // this ensures that we resolve our monorepo referecnes to an actual location
-          // on disk.
-          preserveSymlinks: false,
-          basedir,
-          readFile(path, cb) {
-            host
-              .readFile(path)
-              .then((c) => cb(null, c.text))
-              .catch((e) => cb(e));
-          },
-          isDirectory(path, cb) {
-            host
-              .stat(path)
-              .then((s) => cb(null, s.isDirectory()))
-              .catch((e) => {
-                if (e.code === "ENOENT" || e.code === "ENOTDIR") {
-                  cb(null, false);
-                } else {
-                  cb(e);
-                }
-              });
-          },
-          isFile(path, cb) {
-            host
-              .stat(path)
-              .then((s) => cb(null, s.isFile()))
-              .catch((e) => {
-                if (e.code === "ENOENT" || e.code === "ENOTDIR") {
-                  cb(null, false);
-                } else {
-                  cb(e);
-                }
-              });
-          },
-          realpath(path, cb) {
-            host
-              .realpath(path)
-              .then((p) => cb(null, p))
-              .catch((e) => {
-                if (e.code === "ENOENT" || e.code === "ENOTDIR") {
-                  cb(null, path);
-                } else {
-                  cb(e);
-                }
-              });
-          },
-          packageFilter(pkg) {
-            if (useCadlMain) {
-              // this lets us follow node resolve semantics more-or-less exactly
-              // but using cadlMain instead of main.
-              pkg.main = pkg.cadlMain;
-            }
-            return pkg;
-          },
+  function resolveCadlLibrary(specifier: string, baseDir: string): Promise<string> {
+    return resolveModule(
+      {
+        realpath: host.realpath,
+        stat: host.stat,
+        readFile: async (path) => {
+          const file = await host.readFile(path);
+          return file.text;
         },
-        (err, resolved) => {
-          if (err) {
-            rejectP(err);
-          } else if (!resolved) {
-            rejectP(new Error("BUG: Module resolution succeeded but didn't return a value."));
-          } else {
-            resolveP(resolved);
-          }
-        }
-      );
-    });
+      },
+      specifier,
+      {
+        baseDir,
+        resolveMain(pkg) {
+          // this lets us follow node resolve semantics more-or-less exactly
+          // but using cadlMain instead of main.
+          return pkg.cadlMain ?? pkg.main;
+        },
+      }
+    );
   }
 
-  async function loadMain(mainFile: string, options: CompilerOptions) {
-    const mainPath = host.resolveAbsolutePath(mainFile);
-    const mainStat = await doIO(host.stat, mainPath, program.reportDiagnostic);
+  /**
+   * Load the main file from the given path
+   * @param mainPath Directory containing main.cadl or filename to load as main.
+   * @param options Compiler options.
+   * @returns
+   */
+  async function loadMain(mainPath: string, options: CompilerOptions): Promise<string | undefined> {
+    const resolvedMainPath = resolvePath(mainPath);
+    const mainStat = await doIO(host.stat, resolvedMainPath, program.reportDiagnostic);
     if (!mainStat) {
-      return;
+      return undefined;
     }
 
-    if (!(await checkForCompilerVersionMismatch(mainPath, mainStat.isDirectory()))) {
-      return;
+    if (!(await checkForCompilerVersionMismatch(resolvedMainPath, mainStat.isDirectory()))) {
+      return undefined;
     }
 
     if (mainStat.isDirectory()) {
-      await loadDirectory(mainPath);
+      return await loadDirectory(resolvedMainPath, NoTarget);
     } else {
-      await loadCadlFile(mainPath);
+      await loadCadlFile(resolvedMainPath, NoTarget);
+      return resolvedMainPath;
     }
   }
 
   // It's important that we use the compiler version that resolves locally
   // from the input Cadl source location. Otherwise, there will be undefined
-  // runtime behavior when decorators and onBuild handlers expect a
+  // runtime behavior when decorators and handlers expect a
   // different version of cadl than the current one. Abort the compilation
   // with an error if the Cadl entry point resolves to a different local
   // compiler.
@@ -384,10 +603,21 @@ export async function createProgram(
     mainPath: string,
     mainPathIsDirectory: boolean
   ): Promise<boolean> {
-    const basedir = mainPathIsDirectory ? mainPath : dirname(mainPath);
+    const baseDir = mainPathIsDirectory ? mainPath : getDirectoryPath(mainPath);
     let actual: string;
     try {
-      actual = await resolveModuleSpecifier("@cadl-lang/compiler", basedir, false);
+      actual = await resolveModule(
+        {
+          realpath: host.realpath,
+          stat: host.stat,
+          readFile: async (path) => {
+            const file = await host.readFile(path);
+            return file.text;
+          },
+        },
+        "@cadl-lang/compiler",
+        { baseDir }
+      );
     } catch (err: any) {
       if (err.code === "MODULE_NOT_FOUND") {
         return true; // no local cadl, ok to use any compiler
@@ -395,16 +625,18 @@ export async function createProgram(
       throw err;
     }
 
-    // NOTE: realpath here ensures consistent path normalization with resolveModuleSpecifier below.
-    const expected = await host.realpath(join(fileURLToPath(import.meta.url), "../index.js"));
+    const expected = await host.realpath(
+      resolvePath(host.fileURLToPath(import.meta.url), "../index.js")
+    );
+
     if (actual !== expected) {
       // we have resolved node_modules/@cadl-lang/compiler/dist/core/index.js and we want to get
       // to the shim executable node_modules/.bin/cadl-server
-      const betterCadlServerPath = resolve(actual, "../../../../../.bin/cadl-server");
+      const betterCadlServerPath = resolvePath(actual, "../../../../../.bin/cadl-server");
       program.reportDiagnostic(
         createDiagnostic({
           code: "compiler-version-mismatch",
-          format: { basedir, betterCadlServerPath },
+          format: { basedir: baseDir, betterCadlServerPath },
           target: NoTarget,
         })
       );
@@ -418,24 +650,34 @@ export async function createProgram(
     return (options.miscOptions || {})[key];
   }
 
-  function stateMap(key: Symbol): Map<any, any> {
+  function stateMap(key: symbol): StateMap<any> {
     let m = stateMaps.get(key);
+
     if (!m) {
-      m = new Map();
+      m = new StateMap(program, key);
       stateMaps.set(key, m);
     }
 
     return m;
   }
 
-  function stateSet(key: Symbol): Set<any> {
+  function stateSet(key: symbol): StateSet {
     let s = stateSets.get(key);
+
     if (!s) {
-      s = new Set();
+      s = new StateSet(program, key);
       stateSets.set(key, s);
     }
 
     return s;
+  }
+
+  function enableProjections(projections: ProjectionApplication[], startNode?: Type) {
+    return createProjector(program, projections, startNode);
+  }
+
+  function disableProjections() {
+    currentProjector = undefined;
   }
 
   function reportDiagnostic(diagnostic: Diagnostic): void {
@@ -516,7 +758,7 @@ export async function createProgram(
    */
   function findDirectiveSuppressingCode(
     code: string,
-    directives: DirectiveExpressionNode[]
+    directives: readonly DirectiveExpressionNode[]
   ): Directive | undefined {
     for (const directive of directives.map((x) => parseDirective(x))) {
       if (directive.name === "suppress") {
@@ -541,25 +783,23 @@ export async function createProgram(
   }
 
   function getNode(target: Node | Type | Sym): Node | undefined {
-    if (target.kind === "using") {
-      target = target.symbolSource;
-    }
+    if (!("kind" in target)) {
+      // symbol
+      if (target.flags & SymbolFlags.Using) {
+        return target.symbolSource!.declarations[0];
+      }
 
-    if ("node" in target) {
-      return target.node;
+      return target.declarations[0]; // handle multiple decls
+    } else if (typeof target.kind === "number") {
+      // node
+      return target as Node;
+    } else {
+      // type
+      return (target as Type).node;
     }
-
-    if (target.kind === "decorator") {
-      return undefined;
-    }
-
-    if (target.kind === "Intrinsic") {
-      return undefined;
-    }
-    return target;
   }
 
-  function reportDuplicateSymbols(symbols: SymbolTable<Sym> | undefined) {
+  function reportDuplicateSymbols(symbols: SymbolTable | undefined) {
     if (!symbols) {
       return;
     }
@@ -567,7 +807,7 @@ export async function createProgram(
       for (const symbol of set) {
         if (!duplicateSymbols.has(symbol)) {
           duplicateSymbols.add(symbol);
-          const name = symbol.kind === "using" ? symbol.symbolSource.name : symbol.name;
+          const name = symbol.flags & SymbolFlags.Using ? symbol.symbolSource!.name : symbol.name;
           reportDiagnostic(
             createDiagnostic({
               code: "duplicate-symbol",

@@ -1,9 +1,25 @@
-import { ModelTypeProperty, Program, setDecoratorNamespace, Type } from "@cadl-lang/compiler";
+import {
+  DecoratorContext,
+  Program,
+  setDecoratorNamespace,
+  Type,
+  validateDecoratorParamCount,
+  validateDecoratorParamType,
+  validateDecoratorTarget,
+} from "@cadl-lang/compiler";
 import { reportDiagnostic } from "./diagnostics.js";
 
 const headerFieldsKey = Symbol();
-export function $header(program: Program, entity: Type, headerName: string) {
-  if (!headerName && entity.kind === "ModelProperty") {
+export function $header({ program }: DecoratorContext, entity: Type, headerName?: string) {
+  if (!validateDecoratorTarget(program, entity, "@header", "ModelProperty")) {
+    return;
+  }
+
+  if (headerName && !validateDecoratorParamType(program, entity, headerName, "String")) {
+    return;
+  }
+
+  if (!headerName) {
     headerName = entity.name.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
   }
   program.stateMap(headerFieldsKey).set(entity, headerName);
@@ -18,7 +34,15 @@ export function isHeader(program: Program, entity: Type) {
 }
 
 const queryFieldsKey = Symbol();
-export function $query(program: Program, entity: Type, queryKey: string) {
+export function $query({ program }: DecoratorContext, entity: Type, queryKey?: string) {
+  if (!validateDecoratorTarget(program, entity, "@query", "ModelProperty")) {
+    return;
+  }
+
+  if (queryKey && !validateDecoratorParamType(program, entity, queryKey, "String")) {
+    return;
+  }
+
   if (!queryKey && entity.kind === "ModelProperty") {
     queryKey = entity.name;
   }
@@ -34,7 +58,15 @@ export function isQueryParam(program: Program, entity: Type) {
 }
 
 const pathFieldsKey = Symbol();
-export function $path(program: Program, entity: Type, paramName: string) {
+export function $path({ program }: DecoratorContext, entity: Type, paramName?: string) {
+  if (!validateDecoratorTarget(program, entity, "@path", "ModelProperty")) {
+    return;
+  }
+
+  if (paramName && !validateDecoratorParamType(program, entity, paramName, "String")) {
+    return;
+  }
+
   if (!paramName && entity.kind === "ModelProperty") {
     paramName = entity.name;
   }
@@ -50,19 +82,127 @@ export function isPathParam(program: Program, entity: Type) {
 }
 
 const bodyFieldsKey = Symbol();
-export function $body(program: Program, entity: Type) {
+export function $body({ program }: DecoratorContext, entity: Type) {
+  if (!validateDecoratorTarget(program, entity, "@body", "ModelProperty")) {
+    return;
+  }
   program.stateSet(bodyFieldsKey).add(entity);
 }
 
-export function isBody(program: Program, entity: Type) {
+export function isBody(program: Program, entity: Type): boolean {
   return program.stateSet(bodyFieldsKey).has(entity);
 }
 
-export function hasBody(program: Program, parameters: ModelTypeProperty[]): boolean {
-  return parameters.find((p) => isBody(program, p)) !== undefined;
+const statusCodeKey = Symbol();
+export function $statusCode({ program }: DecoratorContext, entity: Type) {
+  if (!validateDecoratorTarget(program, entity, "@statusCode", "ModelProperty")) {
+    return;
+  }
+  program.stateSet(statusCodeKey).add(entity);
+
+  const codes: string[] = [];
+  if (entity.type.kind === "String") {
+    if (validStatusCode(program, entity.type.value, entity)) {
+      codes.push(entity.type.value);
+    }
+  } else if (entity.type.kind === "Number") {
+    if (validStatusCode(program, String(entity.type.value), entity)) {
+      codes.push(String(entity.type.value));
+    }
+  } else if (entity.type.kind === "Union") {
+    for (const option of entity.type.options) {
+      if (option.kind === "String") {
+        if (validStatusCode(program, option.value, option)) {
+          codes.push(option.value);
+        }
+      } else if (option.kind === "Number") {
+        if (validStatusCode(program, String(option.value), option)) {
+          codes.push(String(option.value));
+        }
+      } else {
+        reportDiagnostic(program, { code: "status-code-invalid", target: entity });
+      }
+    }
+  } else if (entity.type.kind === "TemplateParameter") {
+    // Ignore template parameters
+  } else {
+    reportDiagnostic(program, { code: "status-code-invalid", target: entity });
+  }
+  program.stateMap(statusCodeKey).set(entity, codes);
 }
 
-export type HttpVerb = "get" | "put" | "post" | "patch" | "delete";
+// Check status code value: 3 digits with first digit in [1-5]
+// Issue a diagnostic if not valid
+function validStatusCode(program: Program, code: string, entity: Type): boolean {
+  const statusCodePatten = /[1-5][0-9][0-9]/;
+  if (code.match(statusCodePatten)) {
+    return true;
+  }
+  reportDiagnostic(program, {
+    code: "status-code-invalid",
+    target: entity,
+    messageId: "value",
+  });
+  return false;
+}
+
+export function isStatusCode(program: Program, entity: Type) {
+  return program.stateMap(statusCodeKey).has(entity);
+}
+
+export function getStatusCodes(program: Program, entity: Type) {
+  return program.stateMap(statusCodeKey).get(entity);
+}
+
+// Note: these descriptions come from https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
+export function getStatusCodeDescription(statusCode: string) {
+  switch (statusCode) {
+    case "200":
+      return "Ok";
+    case "201":
+      return "Created";
+    case "202":
+      return "Accepted";
+    case "204":
+      return "No Content";
+    case "301":
+      return "Moved Permanently";
+    case "304":
+      return "Not Modified";
+    case "400":
+      return "Bad Request";
+    case "401":
+      return "Unauthorized";
+    case "403":
+      return "Forbidden";
+    case "404":
+      return "Not Found";
+    case "409":
+      return "Conflict";
+    case "412":
+      return "Precondition Failed";
+    case "503":
+      return "Service Unavailable";
+  }
+
+  switch (statusCode.charAt(0)) {
+    case "1":
+      return "Informational";
+    case "2":
+      return "Successful";
+    case "3":
+      return "Redirection";
+    case "4":
+      return "Client Error";
+    case "5":
+      return "Server Error";
+  }
+
+  // Any valid HTTP status code is covered above.
+  return undefined;
+}
+
+export type HttpVerb = "get" | "put" | "post" | "patch" | "delete" | "head";
 
 const operationVerbsKey = Symbol();
 
@@ -90,24 +230,39 @@ export function getOperationVerb(program: Program, entity: Type): HttpVerb | und
   return program.stateMap(operationVerbsKey).get(entity);
 }
 
-export function $get(program: Program, entity: Type) {
+export function $get({ program }: DecoratorContext, entity: Type, ...args: unknown[]) {
+  validateVerbNoArgs(program, entity, args);
   setOperationVerb(program, entity, "get");
 }
 
-export function $put(program: Program, entity: Type) {
+export function $put({ program }: DecoratorContext, entity: Type, ...args: unknown[]) {
+  validateVerbNoArgs(program, entity, args);
   setOperationVerb(program, entity, "put");
 }
 
-export function $post(program: Program, entity: Type) {
+export function $post({ program }: DecoratorContext, entity: Type, ...args: unknown[]) {
+  validateVerbNoArgs(program, entity, args);
   setOperationVerb(program, entity, "post");
 }
 
-export function $patch(program: Program, entity: Type) {
+export function $patch({ program }: DecoratorContext, entity: Type, ...args: unknown[]) {
+  validateVerbNoArgs(program, entity, args);
   setOperationVerb(program, entity, "patch");
 }
 
-export function $delete(program: Program, entity: Type) {
+export function $delete({ program }: DecoratorContext, entity: Type, ...args: unknown[]) {
+  validateVerbNoArgs(program, entity, args);
   setOperationVerb(program, entity, "delete");
+}
+
+export function $head({ program }: DecoratorContext, entity: Type, ...args: unknown[]) {
+  validateVerbNoArgs(program, entity, args);
+  setOperationVerb(program, entity, "head");
+}
+
+// TODO: replace with built-in decorator validation https://github.com/Azure/cadl-azure/issues/1022
+function validateVerbNoArgs(program: Program, target: Type, args: unknown[]) {
+  validateDecoratorParamCount(program, target, args, 0);
 }
 
 setDecoratorNamespace(
@@ -120,25 +275,22 @@ setDecoratorNamespace(
   $header,
   $query,
   $path,
-  $body
+  $body,
+  $statusCode
 );
 
-export function $plainData(program: Program, entity: Type) {
-  if (entity.kind !== "Model") {
-    reportDiagnostic(program, {
-      code: "decorator-wrong-type",
-      target: entity,
-      format: { decorator: "plainData", entityKind: entity.kind },
-    });
+export function $plainData({ program }: DecoratorContext, entity: Type) {
+  if (!validateDecoratorTarget(program, entity, "@plainData", "Model")) {
     return;
   }
 
-  const decoratorsToRemove = ["$header", "$body", "$query", "$path"];
-  const [headers, queries, paths, bodies] = [
+  const decoratorsToRemove = ["$header", "$body", "$query", "$path", "$statusCode"];
+  const [headers, bodies, queries, paths, statusCodes] = [
     program.stateMap(headerFieldsKey),
     program.stateSet(bodyFieldsKey),
     program.stateMap(queryFieldsKey),
     program.stateMap(pathFieldsKey),
+    program.stateMap(statusCodeKey),
   ];
 
   for (const property of entity.properties.values()) {
@@ -153,6 +305,7 @@ export function $plainData(program: Program, entity: Type) {
     bodies.delete(property);
     queries.delete(property);
     paths.delete(property);
+    statusCodes.delete(property);
   }
 }
 

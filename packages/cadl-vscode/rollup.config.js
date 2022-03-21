@@ -1,14 +1,15 @@
-import resolve from "@rollup/plugin-node-resolve";
+// @ts-check
 import commonjs from "@rollup/plugin-commonjs";
-import path from "path";
+import resolve from "@rollup/plugin-node-resolve";
+import { defineConfig } from "rollup";
 
-export default {
-  input: "dist-dev/extension.js",
+export default defineConfig({
+  input: "dist-dev/src/extension.js",
   output: {
-    file: "dist/extension.js",
+    file: "dist/src/extension.js",
     format: "commonjs",
     sourcemap: true,
-    exports: "default",
+    exports: "named",
   },
   external: ["fs/promises", "vscode"],
   plugins: [resolve({ preferBuiltins: true }), commonjs()],
@@ -16,11 +17,11 @@ export default {
     if (warning.code === "CIRCULAR_DEPENDENCY") {
       // filter out warnings about circular dependencies out of our control
       for (const each of ["node_modules/semver"]) {
-        if (warning.importer.includes(path.normalize(each))) {
+        if (warning.importer.includes(each)) {
           return;
         }
       }
     }
     warn(warning);
   },
-};
+});

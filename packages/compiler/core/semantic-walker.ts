@@ -8,6 +8,7 @@ import {
   NamespaceType,
   OperationType,
   SemanticNodeListener,
+  SyntaxKind,
   TemplateParameterType,
   TupleType,
   Type,
@@ -27,7 +28,16 @@ export function navigateProgram(
   if (!program.checker) {
     return;
   }
-  navigateNamespaceType(program.checker.getGlobalNamespaceType(), eventEmitter, visited);
+
+  if (program.currentProjector) {
+    navigateNamespaceType(
+      program.currentProjector.projectedGlobalNamespace!,
+      eventEmitter,
+      visited
+    );
+  } else {
+    navigateNamespaceType(program.checker.getGlobalNamespaceType(), eventEmitter, visited);
+  }
 }
 
 function navigateNamespaceType(
@@ -93,6 +103,7 @@ function navigateModelType(
   if (model.baseModel) {
     navigateModelType(model.baseModel, eventEmitter, visited);
   }
+  eventEmitter.emit("exitModel", model);
 }
 
 function navigateModelTypeProperty(
@@ -142,6 +153,7 @@ function navigateEnumType(
   if (checkVisited(visited, type)) {
     return;
   }
+
   eventEmitter.emit("enum", type);
 }
 
@@ -224,6 +236,9 @@ function navigateType(
       return navigateTupleType(type, eventEmitter, visited);
     case "TemplateParameter":
       return navigateTemplateParameter(type, eventEmitter, visited);
+    case "Object":
+    case "Projection":
+    case "Function":
     case "Boolean":
     case "EnumMember":
     case "Intrinsic":
@@ -233,22 +248,35 @@ function navigateType(
     default:
       // Dummy const to ensure we handle all types.
       // If you get an error here, add a case for the new type you added
-      const assertNever: never = type;
+      const _assertNever: never = type;
       return;
   }
 }
 
-// Find the immediate children of the given model.
-export function findChildModels(program: Program, parent: ModelType) {
-  const children: ModelType[] = [];
+function isTemplate(model: ModelType) {
+  return (
+    model.node.kind === SyntaxKind.ModelStatement &&
+    model.node.templateParameters.length > 0 &&
+    !model.templateArguments?.length
+  );
+}
+
+// Produce a map from models in a program (with children) to their children. Model templates are not included.
+export function mapChildModels(program: Program): ReadonlyMap<ModelType, readonly ModelType[]> {
+  const map = new Map<ModelType, ModelType[]>();
   navigateProgram(program, {
     model: (model) => {
-      if (model.baseModel === parent) {
-        children.push(model);
+      if (model.baseModel && !isTemplate(model) && !isTemplate(model.baseModel)) {
+        const children = map.get(model.baseModel);
+        if (children) {
+          children.push(model);
+        } else {
+          map.set(model.baseModel, [model]);
+        }
       }
     },
   });
-  return children;
+  return map;
 }
 
 // Return property from type, nesting into baseTypes as needed.

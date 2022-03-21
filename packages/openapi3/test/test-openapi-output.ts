@@ -1,5 +1,6 @@
-import { deepStrictEqual, match, ok, strictEqual } from "assert";
-import { createOpenAPITestHost, openApiFor } from "./testHost.js";
+import { expectDiagnostics } from "@cadl-lang/compiler/testing";
+import { deepStrictEqual, ok, strictEqual } from "assert";
+import { createOpenAPITestRunner, oapiForModel, openApiFor } from "./test-host.js";
 
 describe("openapi3: definitions", () => {
   it("defines models", async () => {
@@ -105,6 +106,31 @@ describe("openapi3: definitions", () => {
       type: "object",
       properties: { y: { type: "integer", format: "int32" } },
       required: ["y"],
+    });
+  });
+
+  it("emits models extended from models when parent is emitted", async () => {
+    const res = await openApiFor(
+      `
+      model Parent {
+        x?: int32;
+      };
+      model Child extends Parent {
+        y?: int32;
+      }
+      namespace Test {
+        @route("/") op test(): Parent;
+      }
+      `
+    );
+    deepStrictEqual(res.components.schemas.Parent, {
+      type: "object",
+      properties: { x: { type: "integer", format: "int32" } },
+    });
+    deepStrictEqual(res.components.schemas.Child, {
+      type: "object",
+      allOf: [{ $ref: "#/components/schemas/Parent" }],
+      properties: { y: { type: "integer", format: "int32" } },
     });
   });
 
@@ -275,70 +301,6 @@ describe("openapi3: definitions", () => {
     });
   });
 
-  it("defines models extended from primitives", async () => {
-    const res = await oapiForModel(
-      "Pet",
-      `
-      model shortString extends string {}
-      model Pet { name: shortString };
-      `
-    );
-
-    ok(res.isRef);
-    ok(res.schemas.shortString, "expected definition named shortString");
-    ok(res.schemas.Pet, "expected definition named Pet");
-    deepStrictEqual(res.schemas.shortString, {
-      type: "string",
-    });
-  });
-
-  it("defines models extended from primitives with attrs", async () => {
-    const res = await oapiForModel(
-      "Pet",
-      `
-      @maxLength(10) @minLength(10)
-      model shortString extends string {}
-      model Pet { name: shortString };
-      `
-    );
-
-    ok(res.isRef);
-    ok(res.schemas.shortString, "expected definition named shortString");
-    ok(res.schemas.Pet, "expected definition named Pet");
-    deepStrictEqual(res.schemas.shortString, {
-      type: "string",
-      minLength: 10,
-      maxLength: 10,
-    });
-  });
-
-  it("defines models extended from primitives with new attrs", async () => {
-    const res = await oapiForModel(
-      "Pet",
-      `
-      @maxLength(10)
-      model shortString extends string {}
-      @minLength(1)
-      model shortButNotEmptyString extends shortString {};
-      model Pet { name: shortButNotEmptyString, breed: shortString };
-      `
-    );
-    ok(res.isRef);
-    ok(res.schemas.shortString, "expected definition named shortString");
-    ok(res.schemas.shortButNotEmptyString, "expected definition named shortButNotEmptyString");
-    ok(res.schemas.Pet, "expected definition named Pet");
-
-    deepStrictEqual(res.schemas.shortString, {
-      type: "string",
-      maxLength: 10,
-    });
-    deepStrictEqual(res.schemas.shortButNotEmptyString, {
-      type: "string",
-      minLength: 1,
-      maxLength: 10,
-    });
-  });
-
   it("defines enum types", async () => {
     const res = await oapiForModel(
       "Pet",
@@ -352,6 +314,26 @@ describe("openapi3: definitions", () => {
     ok(res.isRef);
     strictEqual(res.schemas.Pet.properties.type.$ref, "#/components/schemas/PetType");
     deepStrictEqual(res.schemas.PetType.enum, ["Dog", "Cat"]);
+  });
+
+  it("defines known values", async () => {
+    const res = await oapiForModel(
+      "Pet",
+      `
+      enum KnownPetType {
+        Dog, Cat
+      }
+
+      @knownValues(KnownPetType)
+      model PetType is string {}
+      model Pet { type: PetType };
+      `
+    );
+    ok(res.isRef);
+    strictEqual(res.schemas.Pet.properties.type.$ref, "#/components/schemas/PetType");
+    deepStrictEqual(res.schemas.PetType, {
+      oneOf: [{ type: "string" }, { type: "string", enum: ["Dog", "Cat"] }],
+    });
   });
 
   it("defines nullable properties", async () => {
@@ -371,6 +353,33 @@ describe("openapi3: definitions", () => {
           type: "string",
           nullable: true,
           "x-cadl-name": "Cadl.string | Cadl.null",
+        },
+      },
+      required: ["name"],
+    });
+  });
+
+  it("defines nullable array", async () => {
+    const res = await oapiForModel(
+      "Pet",
+      `
+      model Pet {
+        name: int32[] | null;
+      };
+      `
+    );
+    ok(res.isRef);
+    deepStrictEqual(res.schemas.Pet, {
+      type: "object",
+      properties: {
+        name: {
+          type: "array",
+          items: {
+            type: "integer",
+            format: "int32",
+          },
+          nullable: true,
+          "x-cadl-name": "Cadl.int32[] | Cadl.null",
         },
       },
       required: ["name"],
@@ -402,13 +411,9 @@ describe("openapi3: definitions", () => {
   });
 
   it("throws diagnostics for empty enum definitions", async () => {
-    let testHost = await createOpenAPITestHost();
-    testHost.addCadlFile(
-      "main.cadl",
-      `
-      import "rest";
-      import "openapi3";
-      using Cadl.Http;
+    const runner = await createOpenAPITestRunner();
+
+    const diagnostics = await runner.diagnose(`
       enum PetType {
       }
       model Pet { type: PetType };
@@ -416,12 +421,13 @@ describe("openapi3: definitions", () => {
       namespace root {
         op read(): Pet;
       }
-    `
-    );
+      `);
 
-    const diagnostics = await testHost.diagnose("./");
-    strictEqual(diagnostics.length, 1);
-    match(diagnostics[0].message, /Empty unions are not supported for OpenAPI v3/);
+    expectDiagnostics(diagnostics, {
+      code: "@cadl-lang/openapi3/union-unsupported",
+      message:
+        "Empty unions are not supported for OpenAPI v3 - enums must have at least one value.",
+    });
   });
 
   it("defines request bodies as unions of models", async () => {
@@ -434,7 +440,7 @@ describe("openapi3: definitions", () => {
       }
       @route("/")
       namespace root {
-        op create(@body body: Cat | Dog): OkResponse<{}>;
+        @post op create(@body body: Cat | Dog): { ...Response<200> };
       }
       `);
     ok(openApi.components.schemas.Cat, "expected definition named Cat");
@@ -452,7 +458,7 @@ describe("openapi3: definitions", () => {
       }
       @route("/")
       namespace root {
-        op create(@body body: Cat | string): OkResponse<{}>;
+        @post op create(@body body: Cat | string): { ...Response<200> };
       }
       `);
     ok(openApi.components.schemas.Cat, "expected definition named Cat");
@@ -473,7 +479,7 @@ describe("openapi3: definitions", () => {
     alias Pet = Cat | Dog;
     @route("/")
     namespace root {
-      op create(@body body: Pet): OkResponse<{}>;
+      @post op create(@body body: Pet): { ...Response<200> };
     }
     `);
     ok(openApi.components.schemas.Cat, "expected definition named Cat");
@@ -697,9 +703,10 @@ describe("openapi3: operations", () => {
       `
       @route("/thing")
       namespace root {
-        @get("{name}")
+        @get
+        @route("{name}")
         op getThing(
-          @format("^[a-zA-Z0-9-]{3,24}$")
+          @pattern("^[a-zA-Z0-9-]{3,24}$")
           @path name: string,
 
           @minValue(1)
@@ -724,43 +731,39 @@ describe("openapi3: operations", () => {
   });
 });
 
-describe("openapi3: responses", () => {
-  it("define responses with response headers", async () => {
-    const res = await openApiFor(
-      `
-      model ETagHeader {
-        @header eTag: string;
-      }
-      model Key {
-        key: string;
-      }
+describe("openapi3: request", () => {
+  describe("binary request", () => {
+    it("bytes request should default to application/json byte", async () => {
+      const res = await openApiFor(
+        `
       @route("/")
       namespace root {
-        @get()
-        op read(): Key & ETagHeader;
+        @post op read(@body body: bytes): {};
       }
       `
-    );
-    ok(res.paths["/"].get.responses["200"].headers);
-    ok(res.paths["/"].get.responses["200"].headers["e-tag"]);
-  });
+      );
 
-  it("defines responses with primitive types", async () => {
-    const res = await openApiFor(
-      `
+      const requestBody = res.paths["/"].post.requestBody;
+      ok(requestBody);
+      strictEqual(requestBody.content["application/json"].schema.type, "string");
+      strictEqual(requestBody.content["application/json"].schema.format, "byte");
+    });
+
+    it("bytes request should respect @header contentType and use binary format when not json or text", async () => {
+      const res = await openApiFor(
+        `
       @route("/")
       namespace root {
-        @get()
-        op read(): string;
+        @post op read(@header contentType: "image/png", @body body: bytes): {};
       }
       `
-    );
-    ok(res.paths["/"].get.responses["200"]);
-    ok(res.paths["/"].get.responses["200"].content);
-    strictEqual(
-      res.paths["/"].get.responses["200"].content["application/json"].schema.type,
-      "string"
-    );
+      );
+
+      const requestBody = res.paths["/"].post.requestBody;
+      ok(requestBody);
+      strictEqual(requestBody.content["image/png"].schema.type, "string");
+      strictEqual(requestBody.content["image/png"].schema.format, "binary");
+    });
   });
 });
 
@@ -827,22 +830,35 @@ describe("openapi3: extension decorator", () => {
     strictEqual(oapi.components.parameters.PetId.name, "petId");
     strictEqual(oapi.components.parameters.PetId["x-parameter-extension"], "foobaz");
   });
+
+  it("check format and pattern decorator on model", async () => {
+    const oapi = await openApiFor(
+      `
+      model Pet extends PetId {
+        @pattern("^[a-zA-Z0-9-]{3,24}$")
+        name: string;
+      }
+      model PetId {
+        @path
+        @pattern("^[a-zA-Z0-9-]{3,24}$")
+        @format("UUID")
+        petId: string;
+      }
+      @route("/Pets")
+      namespace root {
+        @get()
+        op get(... PetId): Pet;
+      }
+      `
+    );
+    ok(oapi.paths["/Pets/{petId}"].get);
+    strictEqual(
+      oapi.paths["/Pets/{petId}"].get.parameters[0]["$ref"],
+      "#/components/parameters/PetId"
+    );
+    strictEqual(oapi.components.parameters.PetId.name, "petId");
+    strictEqual(oapi.components.schemas.Pet.properties.name.pattern, "^[a-zA-Z0-9-]{3,24}$");
+    strictEqual(oapi.components.parameters.PetId.schema.format, "UUID");
+    strictEqual(oapi.components.parameters.PetId.schema.pattern, "^[a-zA-Z0-9-]{3,24}$");
+  });
 });
-
-async function oapiForModel(name: string, modelDef: string) {
-  const oapi = await openApiFor(`
-    ${modelDef};
-    @route("/")
-    namespace root {
-      op read(): ${name};
-    }
-  `);
-
-  const useSchema = oapi.paths["/"].get.responses[200].content["application/json"].schema;
-
-  return {
-    isRef: !!useSchema.$ref,
-    useSchema,
-    schemas: oapi.components.schemas || {},
-  };
-}

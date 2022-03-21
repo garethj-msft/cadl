@@ -9,7 +9,7 @@
     "/time": {
       "get": {
         "operationId": "Time_get",
-        "summary": "Get time value \"11:34:56\"",
+        "description": "Get time value \"11:34:56\"",
         "parameters": [],
         "responses": {
           "200": {
@@ -37,20 +37,11 @@
       },
       "put": {
         "operationId": "Time_put",
-        "summary": "Put time value \"08:07:56\"",
+        "description": "Put time value \"08:07:56\"",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "The request has succeeded.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "x-cadl-name": "(anonymous model)"
-                }
-              }
-            }
+            "description": "Ok"
           },
           "default": {
             "description": "Error",

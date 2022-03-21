@@ -65,7 +65,7 @@ Cadl comes with built-in models for common data types:
 
 #### Spread
 
-The spread operator takes the members of a source model and copies them into a target model. Spread doesn't create any nominal relationship between source and target, and so it's useful when you want to reuse common properties without reasoning about or generating complex inheritence relationships.
+The spread operator takes the members of a source model and copies them into a target model. Spread doesn't create any nominal relationship between source and target, and so it's useful when you want to reuse common properties without reasoning about or generating complex inheritance relationships.
 
 ```cadl
 model Animal {
@@ -420,7 +420,7 @@ Decorators enable a developer to attach metadata to types in an Cadl program. Th
 
 Many Cadl constructs can be decorated, including namespaces, operations and their parameters, and models and their members.
 
-Decorators are defined using JavaScript functions that are exported from a standard ECMAScript module. When you import a JavaScript file, Cadl will look for any exported functions, and make them available as decorators inside the Cadl syntax. When a decoratorated declaration is evaluated by Cadl, it will invoke the decorator function, passing along a reference to the current compilation, an object representing the type it is attached to, and any arguments the user provided to the decorator.
+Decorators are defined using JavaScript functions that are exported from a standard ECMAScript module. When you import a JavaScript file, Cadl will look for any exported functions, and make them available as decorators inside the Cadl syntax. When a decorated declaration is evaluated by Cadl, it will invoke the decorator function, passing along a reference to the current compilation, an object representing the type it is attached to, and any arguments the user provided to the decorator.
 
 Decorators are attached by adding the decorator before the element you want to decorate, prefixing the name of the decorator with `@`. Arguments can be provided by using parentheses in a manner similar to many programming languages, e.g. `@dec(1, "hi", { a: string })`. The parentheses can be omitted when no arguments are provided.
 
@@ -461,7 +461,7 @@ Cadl comes built-in with a number of decorators that are useful for defining ser
 - @secret - mark a string as a secret value that should be treated carefully to avoid exposure
 - @minValue/@maxValue - set the min and max values of number types
 - @minLength/@maxLength - set the min and max lengths for strings
-- @format - set the format for a string using regular expression syntax
+- @pattern - set the pattern for a string using regular expression syntax
 
 ##### Visibility decorators
 
@@ -497,15 +497,17 @@ model WriteDog {
 
 ### Libraries
 
-Cadl libraries are bundles of useful Cadl declarations and decorators into reusable packages. Cadl libraries are actually npm packages under the covers. Official Cadl libraries can be found with the `@azure-tools/cadl-` npm package name prefix.
+Cadl libraries are bundles of useful Cadl declarations and decorators into reusable packages. Cadl libraries are actually npm packages under the covers. Official Cadl libraries can be found with the `@cadl-lang/` or `@azure-tools/cadl-` npm package name prefix. Libraries can be either a language library, an emitter library or both.
 
-#### Using libraries
+#### Setting up Cadl library
 
 The first step in using a library is to install it via `npm`. You can get `npm` and `node` from the [Node.js website](https://nodejs.org).
 
-If you haven't already intiialized your Cadl project's package.json file, now would be a good time to do so. The package.json file lets you track the dependencies your project depends on, and is a best practice to check in along with any Cadl files you create. Run `npm init` create your package.json file.
+If you haven't already initialized your Cadl project's package.json file, now would be a good time to do so. The package.json file lets you track the dependencies your project depends on, and is a best practice to check in along with any Cadl files you create. Run `npm init` create your package.json file.
 
 Then, in your Cadl project directory, type `npm install libraryName` to install a library. For example, to install the official Cadl REST API bindings and OpenAPI generator, you would type `npm install @cadl-lang/rest @cadl-lang/openapi3`.
+
+#### Using language libraries
 
 Lastly, you need to import the libraries into your Cadl program. By convention, all external dependencies are imported in your `main.cadl` file, but can be in any Cadl file imported into your program. Importing the two libraries we installed above would look like this:
 
@@ -514,6 +516,22 @@ Lastly, you need to import the libraries into your Cadl program. By convention, 
 import "@cadl-lang/rest";
 import "@cadl-lang/openapi3";
 
+```
+
+#### Using emitter libraries
+
+The emitter needs to be referenced either via the cli `--emit` option or configured in the CADL config file.
+
+```bash
+# Run openapi3 emitter on the spec
+cadl compile . --emit=@cadl-lang/openapi3
+```
+
+or in the config file `cadl-project.yaml`
+
+```yaml
+emitters:
+  "@cadl-lang/openapi3": true
 ```
 
 #### Creating libraries
@@ -535,7 +553,7 @@ The following examples assume you have imported both `@cadl-lang/openapi3` and `
 A definition for a service is the namespace that contains all the operations for the service and carries top-level metadata like service name and version. Cadl offers the following decorators for providing this metadata, and all are optional.
 
 - @serviceTitle - the title of the service
-- @serviceVersion - the version of the service. Can be any string, but later version should lexigraphically sort after earlier versions
+- @serviceVersion - the version of the service. Can be any string, but later version should lexicographically sort after earlier versions
 - @produces - the content types the service may produce
 - @consumes - the content types that may be sent to the service
 
@@ -544,6 +562,7 @@ Here's an example that uses these to define a Pet Store service:
 ```cadl
 @serviceTitle("Pet Store Service")
 @serviceVersion("2021-03-25")
+@doc("This is a sample server Petstore server.")
 @Cadl.Rest.produces("application/json", "image/png")
 @Cadl.Rest.consumes("application/json")
 namespace PetStore;
@@ -618,6 +637,35 @@ namespace Pets {
 
 ```
 
+#### Polymorphism with discriminators
+
+A pattern often used in REST APIs is to define a request or response body as having one of several different shapes, with a property called the
+"discriminator" indicating which actual shape is used for a particular instance.
+Cadl supports this pattern with the `@discriminator` decorator of the Rest library.
+
+The `@discrminator` decorator takes one argument, the name of the discriminator property, and should be placed on the
+model for the request or response body. The different shapes are then defined by separate models that `extend` this request or response model.
+The discriminator property is defined in the "child" models with the value or values that indicate an instance that conforms to its shape.
+
+As an example, a `Pet` model that allows instances that are either a `Cat` or a `Dog` can be defined with
+
+```cadl
+@discriminator("kind")
+model Pet {
+  name: string;
+  weight?: float32;
+}
+model Cat extends Pet {
+  kind: "cat";
+  meow: int32;
+}
+model Dog extends Pet {
+  kind: "dog";
+  bark: string;
+}
+
+```
+
 #### Headers
 
 Model properties and parameters that should be passed in a header use the `@header` decorator. The decorator takes the header name as a parameter. If a header name is not provided, it is inferred from the property or parameter name. Let's add `etag` support to our pet store's read operation.
@@ -645,24 +693,24 @@ Use the `@header` decorator on a property named `statusCode` to declare a status
 @route("/pets")
 namespace Pets {
   op list(@query skip: int32, @query top: int32): {
-    @header statusCode: 200;
+    @statusCode statusCode: 200;
     @body pets: Pet[];
   };
   op read(@path petId: int32, @header ifMatch?: string): {
-    @header statusCode: 200;
+    @statusCode statusCode: 200;
     @header eTag: string;
     @body pet: Pet;
   } | {
-    @header statusCode: 404;
+    @statusCode statusCode: 404;
   };
   op create(@body pet: Pet): {
-    @header statusCode: 200;
+    @statusCode statusCode: 200;
   };
 }
 
 ```
 
-#### Built-in request shapes
+#### Built-in response shapes
 
 Since status codes are so common for REST APIs, Cadl comes with some built-in types for common status codes so you don't need to declare status codes so frequently. Lets update our sample one last time to use these built-in response types:
 
@@ -679,4 +727,17 @@ namespace Pets {
   op create(@body pet: Pet): OkResponse<{}>;
 }
 
+```
+
+### CADL Config
+
+Cadl has a configuration file `cadl-project.yaml` that right now is only used to configure the default emitter to use.
+The config file needs to be a sibling of the `package.json`. Cadl will look for the following files in that order and pick the 1st one found:
+
+Configuration schema:
+
+```yaml
+# Map of the default emitters to use when not using `--emit`
+emitters:
+  <emitterName>: true
 ```

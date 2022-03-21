@@ -17,6 +17,7 @@ import {
   ModelStatementNode,
   NamespaceStatementNode,
   Node,
+  NodeFlags,
   NumericLiteralNode,
   OperationStatementNode,
   Statement,
@@ -28,10 +29,11 @@ import {
   UnionStatementNode,
   UnionVariantNode,
 } from "../../core/types.js";
+import { isArray } from "../../core/util.js";
 import { commentHandler } from "./comment-handler.js";
 import { CadlPrettierOptions, DecorableNode, PrettierChildPrint } from "./types.js";
 
-const { align, breakParent, concat, group, hardline, ifBreak, indent, join, line, softline } =
+const { align, breakParent, group, hardline, ifBreak, indent, join, line, softline } =
   prettier.doc.builders;
 
 const { isNextLineEmpty } = prettier.util;
@@ -147,7 +149,12 @@ function printTemplateParameters<T extends Node>(
 
 export function canAttachComment(node: Node): boolean {
   const kind = node.kind as SyntaxKind;
-  return Boolean(kind && kind !== SyntaxKind.LineComment && kind !== SyntaxKind.BlockComment);
+  return Boolean(
+    kind &&
+      kind !== SyntaxKind.LineComment &&
+      kind !== SyntaxKind.BlockComment &&
+      !(node.flags & NodeFlags.Synthetic)
+  );
 }
 
 export function printComment(
@@ -368,8 +375,10 @@ export function printEnumMember(
   const node = path.getValue();
   const id = path.call(print, "id");
   const value = node.value ? [": ", path.call(print, "value")] : "";
-  const { decorators } = printDecorators(path, options, print, { tryInline: true });
-  return [decorators, id, value];
+  const { decorators, multiline } = printDecorators(path, options, print, { tryInline: true });
+  const propertyIndex = path.stack[path.stack.length - 2];
+  const isNotFirst = typeof propertyIndex === "number" && propertyIndex > 0;
+  return [multiline && isNotFirst ? hardline : "", decorators, id, value];
 }
 
 export function printUnionStatement(
@@ -605,7 +614,7 @@ export function printModelStatement(
 }
 
 function printModelPropertiesBlock(
-  path: AstPath<Node & { properties?: (ModelPropertyNode | ModelSpreadPropertyNode)[] }>,
+  path: AstPath<Node & { properties?: readonly (ModelPropertyNode | ModelSpreadPropertyNode)[] }>,
   options: CadlPrettierOptions,
   print: PrettierChildPrint
 ) {
@@ -694,11 +703,11 @@ export function printNamespaceStatement(
   print: PrettierChildPrint
 ) {
   const printNested = (currentPath: AstPath<NamespaceStatementNode>, parentNames: Doc[]): Doc => {
-    const names = [...parentNames, currentPath.call(print, "name")];
+    const names = [...parentNames, currentPath.call(print, "id")];
     const currentNode = currentPath.getNode();
 
     if (
-      !Array.isArray(currentNode?.statements) &&
+      !isArray(currentNode?.statements) &&
       currentNode?.statements?.kind === SyntaxKind.NamespaceStatement
     ) {
       return path.call((x) => printNested(x, names), "statements");

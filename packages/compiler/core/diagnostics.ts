@@ -1,7 +1,5 @@
-import { AssertionError } from "assert";
 import { CharCode } from "./charcode.js";
 import { formatLog } from "./logger.js";
-import { isSynthetic } from "./parser.js";
 import { Program } from "./program.js";
 import {
   Diagnostic,
@@ -12,10 +10,13 @@ import {
   DiagnosticTarget,
   LogSink,
   Node,
+  NodeFlags,
   NoTarget,
   SourceFile,
   SourceLocation,
+  SymbolFlags,
   SyntaxKind,
+  Type,
 } from "./types.js";
 
 /**
@@ -79,6 +80,16 @@ export function createDiagnosticCreator<T extends { [code: string]: DiagnosticMe
     createDiagnostic,
     reportDiagnostic,
   } as any;
+}
+
+/**
+ * Represents a failure while interpreting a projection.
+ */
+export class ProjectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProjectionError";
+  }
 }
 
 export type WriteLine = (text?: string) => void;
@@ -156,20 +167,30 @@ export function getSourceLocation(
     return target;
   }
 
-  if (target.kind === "using") {
-    target = target.symbolSource;
-  }
+  if (!("kind" in target)) {
+    // symbol
+    if (target.flags & SymbolFlags.Using) {
+      target = target.symbolSource!;
+    }
 
-  if (target.kind === "decorator") {
-    return createDummySourceLocation(target.path);
-  }
+    if (!target.declarations[0]) {
+      return createDummySourceLocation();
+    }
 
-  const node = "node" in target ? target.node! : target;
-  if (node.kind === "Intrinsic") {
+    return getSourceLocationOfNode(target.declarations[0]);
+  } else if (typeof target.kind === "number") {
+    // node
+    return getSourceLocationOfNode(target as Node);
+  } else {
+    // type
+    const targetNode = (target as Type).node;
+
+    if (targetNode) {
+      return getSourceLocationOfNode(targetNode);
+    }
+
     return createDummySourceLocation();
   }
-
-  return getSourceLocationOfNode(node);
 }
 
 function createDummySourceLocation(loc = "<unknown location>") {
@@ -189,7 +210,7 @@ function getSourceLocationOfNode(node: Node): SourceLocation {
 
   if (root.kind !== SyntaxKind.CadlScript) {
     return createDummySourceLocation(
-      isSynthetic(node)
+      node.flags & NodeFlags.Synthetic
         ? undefined
         : "<unknown location - cannot obtain source location of unbound node - file bug at https://github.com/microsoft/cadl>"
     );
@@ -211,14 +232,16 @@ function getSourceLocationOfNode(node: Node): SourceLocation {
  * instead of producing the message then passing it here only to be dropped
  * when verbose output is disabled.
  */
-export function logVerboseTestOutput(messageOrCallback: string | ((log: LogSink) => void)) {
+export function logVerboseTestOutput(
+  messageOrCallback: string | ((log: (message: string) => void) => void)
+) {
   if (process.env.CADL_VERBOSE_TEST_OUTPUT) {
     if (typeof messageOrCallback === "string") {
+      // eslint-disable-next-line no-console
       console.log(messageOrCallback);
     } else {
-      messageOrCallback({
-        log: ({ message }) => console.log(message),
-      });
+      // eslint-disable-next-line no-console
+      messageOrCallback(console.log);
     }
   }
 }
@@ -239,8 +262,6 @@ export function compilerAssert(
   message: string,
   target?: DiagnosticTarget
 ): asserts condition {
-  let locationError: Error | undefined;
-
   if (condition) {
     return;
   }
@@ -249,9 +270,7 @@ export function compilerAssert(
     let location: SourceLocation | undefined;
     try {
       location = getSourceLocation(target);
-    } catch (err: any) {
-      locationError = err;
-    }
+    } catch (err: any) {}
 
     if (location) {
       const pos = location.file.getLineAndCharacterOfPosition(location.pos);
@@ -262,7 +281,7 @@ export function compilerAssert(
     }
   }
 
-  throw new AssertionError({ message });
+  throw new Error(message);
 }
 
 function scanLineStarts(text: string): number[] {
@@ -312,4 +331,17 @@ function binarySearch(array: readonly number[], value: number) {
   }
 
   return ~low;
+}
+
+/**
+ * Assert that the input type has one of the kinds provided
+ */
+export function assertType<TKind extends Type["kind"][]>(
+  typeDescription: string,
+  t: Type,
+  ...kinds: TKind
+): asserts t is Type & { kind: TKind[number] } {
+  if (kinds.indexOf(t.kind) === -1) {
+    throw new ProjectionError(`Expected ${typeDescription} to be type ${kinds.join(", ")}`);
+  }
 }

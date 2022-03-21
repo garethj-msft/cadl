@@ -59,41 +59,60 @@ export enum Token {
   Bar = 24,
   Question = 25,
   Colon = 26,
-  At = 27,
-  Hash = 28,
+  ColonColon = 27,
+  At = 28,
+  Hash = 29,
+  Star = 30,
+  ForwardSlash = 31,
+  Plus = 32,
+  Hyphen = 33,
+  Exclamation = 34,
+  LessThanEquals = 35,
+  GreaterThanEquals = 36,
+  AmpsersandAmpersand = 37,
+  BarBar = 38,
+  EqualsEquals = 39,
+  ExclamationEquals = 40,
+  EqualsGreaterThan = 41,
   // Update MaxPunctuation if anything is added right above here
 
   // Identifiers
-  Identifier = 29,
+  Identifier = 42,
 
   // Statement Keywords
-  ImportKeyword = 30,
-  ModelKeyword = 31,
-  NamespaceKeyword = 32,
-  UsingKeyword = 33,
-  OpKeyword = 34,
-  EnumKeyword = 35,
-  AliasKeyword = 36,
-  IsKeyword = 37,
-  InterfaceKeyword = 38,
-  UnionKeyword = 39,
+  ImportKeyword = 43,
+  ModelKeyword = 44,
+  NamespaceKeyword = 45,
+  UsingKeyword = 46,
+  OpKeyword = 47,
+  EnumKeyword = 48,
+  AliasKeyword = 49,
+  IsKeyword = 50,
+  InterfaceKeyword = 51,
+  UnionKeyword = 52,
+  ProjectionKeyword = 53,
+  ElseKeyword = 54,
+  IfKeyword = 55,
   // Update MaxStatementKeyword if anything is added right above here
 
   // Other keywords
-  ExtendsKeyword = 40,
-  TrueKeyword = 41,
-  FalseKeyword = 42,
+  ExtendsKeyword = 56,
+  TrueKeyword = 57,
+  FalseKeyword = 58,
+  ReturnKeyword = 59,
+  VoidKeyword = 60,
+  NeverKeyword = 61,
   // Update MaxKeyword if anything is added right above here
 }
 
 const MinKeyword = Token.ImportKeyword;
-const MaxKeyword = Token.FalseKeyword;
+const MaxKeyword = Token.NeverKeyword;
 
 const MinPunctuation = Token.OpenBrace;
-const MaxPunctuation = Token.Hash;
+const MaxPunctuation = Token.EqualsGreaterThan;
 
 const MinStatementKeyword = Token.ImportKeyword;
-const MaxStatementKeyword = Token.UnionKeyword;
+const MaxStatementKeyword = Token.IfKeyword;
 
 /** @internal */
 export const TokenDisplay: readonly string[] = [
@@ -107,7 +126,7 @@ export const TokenDisplay: readonly string[] = [
   "conflict marker",
   "numeric literal",
   "string literal",
-  "'{'",
+  "'{'", // 10
   "'}'",
   "'('",
   "')'",
@@ -117,15 +136,28 @@ export const TokenDisplay: readonly string[] = [
   "'...'",
   "';'",
   "','",
-  "'<'",
+  "'<'", // 20
   "'>'",
   "'='",
   "'&'",
   "'|'",
   "'?'",
   "':'",
+  "'::'",
   "'@'",
   "'#'",
+  "'*'", // 30
+  "'/'",
+  "'+'",
+  "'-'",
+  "'!'",
+  "'<='",
+  "'>='",
+  "'&&'",
+  "'||'",
+  "'=='",
+  "'!='", // 40
+  "'=>'",
   "identifier",
   "'import'",
   "'model'",
@@ -134,12 +166,18 @@ export const TokenDisplay: readonly string[] = [
   "'op'",
   "'enum'",
   "'alias'",
-  "'is'",
+  "'is'", // 50
   "'interface'",
   "'union'",
+  "'projection'",
+  "'else'",
+  "'if'",
   "'extends'",
   "'true'",
   "'false'",
+  "'return'",
+  "'void'", // 60
+  "'never'",
 ];
 
 /** @internal */
@@ -149,6 +187,9 @@ export const Keywords: readonly [string, Token][] = [
   ["namespace", Token.NamespaceKeyword],
   ["interface", Token.InterfaceKeyword],
   ["union", Token.UnionKeyword],
+  ["if", Token.IfKeyword],
+  ["else", Token.ElseKeyword],
+  ["projection", Token.ProjectionKeyword],
   ["using", Token.UsingKeyword],
   ["op", Token.OpKeyword],
   ["extends", Token.ExtendsKeyword],
@@ -157,6 +198,9 @@ export const Keywords: readonly [string, Token][] = [
   ["alias", Token.AliasKeyword],
   ["true", Token.TrueKeyword],
   ["false", Token.FalseKeyword],
+  ["return", Token.ReturnKeyword],
+  ["void", Token.VoidKeyword],
+  ["never", Token.NeverKeyword],
 ];
 
 /** @internal */
@@ -165,9 +209,8 @@ export const enum KeywordLimit {
   // If this ever exceeds 10, we will overflow the keyword map key, needing 11*5
   // = 55 bits or more, exceeding the JavaScript safe integer range. We would
   // have to change the keyword lookup algorithm in that case.
-  MaxLength = 9,
+  MaxLength = 10,
 }
-
 const KeywordMap: ReadonlyMap<number, Token> = new Map(
   Keywords.map((e) => [keywordKey(e[0]), e[1]])
 );
@@ -178,9 +221,16 @@ const KeywordMap: ReadonlyMap<number, Token> = new Map(
 function keywordKey(keyword: string) {
   let key = 0;
   for (let i = 0; i < keyword.length; i++) {
-    key = (key << 5) | (keyword.charCodeAt(i) - CharCode.a);
+    key = updateKeywordKey(key, keyword.charCodeAt(i));
   }
   return key;
+}
+
+function updateKeywordKey(key: number, ch: number) {
+  // Do not simplify this to (key << 5) | (ch - CharCode.a) as JavaScript
+  // bitwise operations truncate to 32-bits, and that will create
+  // collisions.
+  return key * 32 + (ch - CharCode.a);
 }
 
 export interface Scanner {
@@ -344,7 +394,7 @@ export function createScanner(
           return next(Token.Comma);
 
         case CharCode.Colon:
-          return next(Token.Colon);
+          return lookAhead(1) === CharCode.Colon ? next(Token.ColonColon, 2) : next(Token.Colon);
 
         case CharCode.Semicolon:
           return next(Token.Semicolon);
@@ -367,11 +417,22 @@ export function createScanner(
         case CharCode.Hash:
           return next(Token.Hash);
 
+        case CharCode.Plus:
+          return isDigit(lookAhead(1)) ? scanSignedNumber() : next(Token.Plus);
+
+        case CharCode.Minus:
+          return isDigit(lookAhead(1)) ? scanSignedNumber() : next(Token.Hyphen);
+
+        case CharCode.Asterisk:
+          return next(Token.Star);
+
         case CharCode.Question:
           return next(Token.Question);
 
         case CharCode.Ampersand:
-          return next(Token.Ampersand);
+          return lookAhead(1) === CharCode.Ampersand
+            ? next(Token.AmpsersandAmpersand, 2)
+            : next(Token.Ampersand);
 
         case CharCode.Dot:
           return lookAhead(1) === CharCode.Dot && lookAhead(2) === CharCode.Dot
@@ -385,11 +446,8 @@ export function createScanner(
             case CharCode.Asterisk:
               return scanMultiLineComment();
           }
-          return scanInvalidCharacter();
 
-        case CharCode.Plus:
-        case CharCode.Minus:
-          return isDigit(lookAhead(1)) ? scanSignedNumber() : scanInvalidCharacter();
+          return next(Token.ForwardSlash);
 
         case CharCode._0:
           switch (lookAhead(1)) {
@@ -411,22 +469,32 @@ export function createScanner(
           return scanNumber();
 
         case CharCode.LessThan:
-          return isConflictMarker()
+          return lookAhead(1) === CharCode.Equals
+            ? next(Token.LessThanEquals, 2)
+            : isConflictMarker()
             ? next(Token.ConflictMarker, mergeConflictMarkerLength)
             : next(Token.LessThan);
 
         case CharCode.GreaterThan:
-          return isConflictMarker()
+          return lookAhead(1) === CharCode.Equals
+            ? next(Token.GreaterThanEquals, 2)
+            : isConflictMarker()
             ? next(Token.ConflictMarker, mergeConflictMarkerLength)
             : next(Token.GreaterThan);
 
         case CharCode.Equals:
-          return isConflictMarker()
+          return lookAhead(1) === CharCode.Equals
+            ? next(Token.EqualsEquals, 2)
+            : lookAhead(1) === CharCode.GreaterThan
+            ? next(Token.EqualsGreaterThan, 2)
+            : isConflictMarker()
             ? next(Token.ConflictMarker, mergeConflictMarkerLength)
             : next(Token.Equals);
 
         case CharCode.Bar:
-          return isConflictMarker()
+          return lookAhead(1) === CharCode.Bar
+            ? next(Token.BarBar, 2)
+            : isConflictMarker()
             ? next(Token.ConflictMarker, mergeConflictMarkerLength)
             : next(Token.Bar);
 
@@ -434,7 +502,10 @@ export function createScanner(
           return lookAhead(1) === CharCode.DoubleQuote && lookAhead(2) === CharCode.DoubleQuote
             ? scanTripleQuotedString()
             : scanString();
-
+        case CharCode.Exclamation:
+          return lookAhead(1) === CharCode.Equals
+            ? next(Token.ExclamationEquals, 2)
+            : next(Token.Exclamation);
         default:
           if (isLowercaseAsciiLetter(ch)) {
             return scanIdentifierOrKeyword();
@@ -474,7 +545,7 @@ export function createScanner(
       return scanWhitespace();
     }
 
-    let cp = input.codePointAt(position)!;
+    const cp = input.codePointAt(position)!;
     if (isNonAsciiIdentifierCharacter(cp)) {
       return scanNonAsciiIdentifier(cp);
     }
@@ -595,9 +666,10 @@ export function createScanner(
   }
 
   function scanMultiLineComment() {
-    position = skipMultiLineComment(input, position);
+    const [newPosition, terminated] = skipMultiLineComment(input, position);
+    position = newPosition;
     token = Token.MultiLineComment;
-    return position === input.length ? unterminated(token) : token;
+    return terminated ? token : unterminated(token);
   }
 
   function scanString() {
@@ -782,7 +854,7 @@ export function createScanner(
     let pos = start;
 
     while (pos < end) {
-      let ch = input.charCodeAt(pos);
+      const ch = input.charCodeAt(pos);
       if (ch !== CharCode.Backslash) {
         pos++;
         continue;
@@ -830,7 +902,7 @@ export function createScanner(
     while (true) {
       position++;
       count++;
-      key = (key << 5) | (ch - CharCode.a);
+      key = updateKeywordKey(key, ch);
 
       if (eof()) {
         break;
@@ -876,7 +948,7 @@ export function createScanner(
     } while (isAsciiIdentifierContinue((ch = input.charCodeAt(position))));
 
     if (ch > CharCode.MaxAscii) {
-      let cp = input.codePointAt(position)!;
+      const cp = input.codePointAt(position)!;
       if (isNonAsciiIdentifierCharacter(cp)) {
         return scanNonAsciiIdentifier(cp);
       }
@@ -898,7 +970,7 @@ export function createScanner(
 
 export function skipTrivia(input: string, position: number): number {
   while (position < input.length) {
-    let ch = input.charCodeAt(position);
+    const ch = input.charCodeAt(position);
 
     if (isWhiteSpace(ch)) {
       position++;
@@ -911,7 +983,7 @@ export function skipTrivia(input: string, position: number): number {
           position = skipSingleLineComment(input, position);
           continue;
         case CharCode.Asterisk:
-          position = skipMultiLineComment(input, position);
+          position = skipMultiLineComment(input, position)[0];
           continue;
       }
     }
@@ -934,7 +1006,10 @@ function skipSingleLineComment(input: string, position: number): number {
   return position;
 }
 
-function skipMultiLineComment(input: string, position: number): number {
+function skipMultiLineComment(
+  input: string,
+  position: number
+): [position: number, terminated: boolean] {
   position += 2; // consume '/*'
 
   for (; position < input.length; position++) {
@@ -942,10 +1017,9 @@ function skipMultiLineComment(input: string, position: number): number {
       input.charCodeAt(position) === CharCode.Asterisk &&
       input.charCodeAt(position + 1) === CharCode.Slash
     ) {
-      position += 2;
-      break;
+      return [position + 2, true];
     }
   }
 
-  return position;
+  return [position, false];
 }
