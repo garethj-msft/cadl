@@ -3,6 +3,10 @@ import "@cadl-lang/rest";
 
 namespace Cadl.MsGraph;
 
+alias uri = string;
+
+model stream {}
+
 model TCreatedResponse<T> {
         ... Cadl.Http.CreatedResponse;
         ... Cadl.Http.LocationHeader;
@@ -14,7 +18,14 @@ model List<T> {
     value: T[];
 }
 
+@doc("An OData Reference to an resource.")
+model Ref<T> {
+    id: uri;
+}
+
+
+
 @doc("An Graph standard paged list representation.")
 model PagedList<T> extends List<T> {
-    nextLink?: string
+    nextLink?: uri
 }

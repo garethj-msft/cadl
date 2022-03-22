@@ -1,16 +1,20 @@
 import {
-  Program,
-  Type,
-  OperationType,
-  addOperationParameter,
-  SyntaxKind,
   createCadlLibrary,
-  paramMessage,
-  NewParameterOptions,
+  OperationType,
   ModelTypeProperty,
+  Program,
+  DecoratorContext,
+  setDecoratorNamespace,
+  Type,
 } from "@cadl-lang/compiler";
+
+// import {
+//   addOperationParameter,
+// } from "@cadl-lang/compiler";
+
 import { http } from "@cadl-lang/rest";
 const { $query } = http;
+
 
 const libDefinition = {
   name: "@cadl-lang/msgraph",
@@ -42,7 +46,7 @@ const { reportDiagnostic } = msgraphLib;
 
 const idFieldsKey = Symbol();
 
-export function $id(program: Program, entity: Type, idKey: string) {
+export function $id({ program }: DecoratorContext, entity: Type, idKey: string) {
   if (!idKey && entity.kind === "ModelProperty") {
     idKey = entity.name;
   }
@@ -51,34 +55,26 @@ export function $id(program: Program, entity: Type, idKey: string) {
 
 const valueFieldsKey = Symbol();
 
-export function $value(program: Program, entity: Type, valueKey: string) {
+export function $value({ program }: DecoratorContext, entity: Type, valueKey: string) {
   if (!valueKey && entity.kind === "EnumMember") {
     valueKey = entity.name;
   }
   program.stateMap(valueFieldsKey).set(entity, valueKey);
 }
 
-const byRefFieldsKey = Symbol();
-
-export function $byRef(program: Program, entity: Type, byRefKey: string) {
-  if (!byRefKey && entity.kind === "ModelProperty") {
-    byRefKey = entity.name;
-  }
-  program.stateMap(byRefFieldsKey).set(entity, byRefKey);
-}
-
 const serviceFieldsKey = Symbol();
 
-export function $service(program: Program, entity: Type, serviceKey: string) {
+export function $service({ program }: DecoratorContext, entity: Type, serviceKey: string) {
   if (!serviceKey && entity.kind === "Model") {
     serviceKey = entity.name;
   }
+  if(serviceKey )
   program.stateMap(serviceFieldsKey).set(entity, serviceKey);
 }
 
 const importModelFieldsKey = Symbol();
 
-export function $importModel(program: Program, entity: Type, importModelKey: string) {
+export function $importModel({ program }: DecoratorContext, entity: Type, importModelKey: string) {
   if (!importModelKey && entity.kind === "Model") {
     importModelKey = entity.name;
   }
@@ -87,7 +83,7 @@ export function $importModel(program: Program, entity: Type, importModelKey: str
 
 const serverGeneratedFieldsKey = Symbol();
 
-export function $serverGenerated(program: Program, entity: Type, serverGeneratedKey: string) {
+export function $serverGenerated({ program }: DecoratorContext, entity: Type, serverGeneratedKey: string) {
   if (!serverGeneratedKey && entity.kind === "ModelProperty") {
     serverGeneratedKey = entity.name;
   }
@@ -96,7 +92,7 @@ export function $serverGenerated(program: Program, entity: Type, serverGenerated
 
 const externalFieldsKey = Symbol();
 
-export function $external(program: Program, entity: Type, externalKey: string) {
+export function $external({ program }: DecoratorContext, entity: Type, externalKey: string) {
   if (!externalKey && entity.kind === "Model") {
     externalKey = entity.name;
   }
@@ -105,7 +101,7 @@ export function $external(program: Program, entity: Type, externalKey: string) {
 
 const partialFieldsKey = Symbol();
 
-export function $partial(program: Program, entity: Type, partialKey: string) {
+export function $partial({ program }: DecoratorContext, entity: Type, partialKey: string) {
   if (!partialKey && entity.kind === "Model") {
     partialKey = entity.name;
   }
@@ -114,7 +110,7 @@ export function $partial(program: Program, entity: Type, partialKey: string) {
 
 const relationFieldsKey = Symbol();
 
-export function $relation(program: Program, entity: Type, relationKey: string) {
+export function $relation({ program }: DecoratorContext, entity: Type, relationKey: string) {
   if (!relationKey && entity.kind === "ModelProperty") {
     relationKey = entity.name;
   }
@@ -124,7 +120,7 @@ export function $relation(program: Program, entity: Type, relationKey: string) {
 
 const refRelationFieldsKey = Symbol();
 
-export function $refRelation(program: Program, entity: Type, refRelationKey: string) {
+export function $refRelation({ program }: DecoratorContext, entity: Type, refRelationKey: string) {
   if (!refRelationKey && entity.kind === "ModelProperty") {
     refRelationKey = entity.name;
   }
@@ -133,7 +129,7 @@ export function $refRelation(program: Program, entity: Type, refRelationKey: str
 
 const workloadNameFieldsKey = Symbol();
 
-export function $workloadName(program: Program, entity: Type, workloadNameKey: string) {
+export function $workloadName({ program }: DecoratorContext, entity: Type, workloadNameKey: string) {
   if (!workloadNameKey && entity.kind === "ModelProperty") {
     workloadNameKey = entity.name;
   }
@@ -142,7 +138,7 @@ export function $workloadName(program: Program, entity: Type, workloadNameKey: s
 
 const requiredFieldsKey = Symbol();
 
-export function $required(program: Program, entity: Type, requiredKey: string) {
+export function $required({ program }: DecoratorContext, entity: Type, requiredKey: string) {
   if (!requiredKey && entity.kind === "ModelProperty") {
     requiredKey = entity.name;
   }
@@ -151,7 +147,7 @@ export function $required(program: Program, entity: Type, requiredKey: string) {
 
 const immutableFieldsKey = Symbol();
 
-export function $immutable(program: Program, entity: Type, immutableKey: string) {
+export function $immutable({ program }: DecoratorContext, entity: Type, immutableKey: string) {
   if (!immutableKey && entity.kind === "ModelProperty") {
     immutableKey = entity.name;
   }
@@ -160,7 +156,7 @@ export function $immutable(program: Program, entity: Type, immutableKey: string)
 
 const writeOnlyFieldsKey = Symbol();
 
-export function $writeOnly(program: Program, entity: Type, writeOnlyKey: string) {
+export function $writeOnly({ program }: DecoratorContext, entity: Type, writeOnlyKey: string) {
   if (!writeOnlyKey && entity.kind === "ModelProperty") {
     writeOnlyKey = entity.name;
   }
@@ -170,57 +166,84 @@ export function $writeOnly(program: Program, entity: Type, writeOnlyKey: string)
 
 const topFieldsKey = Symbol();
 
-export function $top(program: Program, entity: Type, topKey: string) {
+export function $top({ program }: DecoratorContext, entity: Type, topKey: string) {
   if (!topKey && entity.kind === "Operation") {
     topKey = entity.name;
   }
   program.stateMap(topFieldsKey).set(entity, topKey);
 }
 
+const countFieldsKey = Symbol();
+
+export function $count({ program }: DecoratorContext, entity: Type, countKey: string) {
+  if (!countKey && entity.kind === "Operation") {
+    countKey = entity.name;
+  }
+  program.stateMap(countFieldsKey).set(entity, countKey);
+}
+
+const expandFieldsKey = Symbol();
+
+export function $expand({ program }: DecoratorContext, entity: Type, expandKey: string) {
+  if (!expandKey && entity.kind === "Operation") {
+    expandKey = entity.name;
+  }
+  program.stateMap(expandFieldsKey).set(entity, expandKey);
+}
+
+const orderByFieldsKey = Symbol();
+
+export function $orderBy({ program }: DecoratorContext, entity: Type, orderByKey: string) {
+  if (!orderByKey && entity.kind === "Operation") {
+    orderByKey = entity.name;
+  }
+  program.stateMap(orderByFieldsKey).set(entity, orderByKey);
+}
+
+
 const skipFieldsKey = Symbol();
 
-export function $skip(program: Program, entity: Type, skipKey: string) {
+export function $skip(context: DecoratorContext, entity: Type, skipKey: string) {
   if (!skipKey && entity.kind === "Operation") {
     skipKey = entity.name;
   }
   let operation = entity as OperationType;
   if (!operation)
   {
-    reportDiagnostic(program, {
+    reportDiagnostic(context.program, {
         code: "skip-only-op",
         target: entity,
       });
   }
   else
   {
-    let qp = addOperationParameter(program, operation, "skip", "int32") as ModelTypeProperty;
-    if (!qp)
-    {
-      reportDiagnostic(program, {
-          code: "skip-op-fail",
-          target: entity,
-        });
-    }
-    else
-    {
-      qp.optional = true;
-      $query(
-        program,
-        qp,
-        "skip",
-      );
+    // let qp = addOperationParameter(context.program, operation, "skip", "int32") as ModelTypeProperty;
+    // if (!qp)
+    // {
+    //   reportDiagnostic(context.program, {
+    //       code: "skip-op-fail",
+    //       target: entity,
+    //     });
+    // }
+    // else
+    // {
+    //   qp.optional = true;
+    //   $query(
+    //     context,
+    //     qp,
+    //     "skip",
+    //   );
 
-      program.stateMap(skipFieldsKey).set(entity, skipKey);
-    }
+    //   context.program.stateMap(skipFieldsKey).set(entity, skipKey);
+    // }
   }
 }
 
 const skipTokenFieldsKey = Symbol();
 
-export function $skipToken(program: Program, entity: Type, skipTokenKey: string) {
+export function $skipToken({ program }: DecoratorContext, entity: Type, skipTokenKey: string) {
   if (!skipTokenKey && entity.kind === "Operation") {
     skipTokenKey = entity.name;
   }
   program.stateMap(skipTokenFieldsKey).set(entity, skipTokenKey);
 }
-
