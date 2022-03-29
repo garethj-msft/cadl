@@ -1,8 +1,8 @@
 {
-  "name": "@cadl-lang/msgraph",
+  "name": "@cadl-lang/csdl",
   "version": "0.1.0",
   "author": "Microsoft Corporation",
-  "description": "Demo Cadl library for describing Graph APIs.",
+  "description": "Demo Cadl library for emitting OData CSDL.",
   "homepage": "https://github.com/microsoftgraph/cadl-msgraph",
   "readme": "https://github.com/Azure/adl/blob/master/README.md",
   "license": "MIT",
@@ -17,11 +17,11 @@
     "cadl"
   ],
   "type": "module",
-  "main": "dist/src/msgraph.js",
+  "main": "dist/src/csdl.js",
   "exports": {
-    ".": "./dist/src/msgraph.js"
+    ".": "./dist/src/csdl.js"
   },
-  "cadlMain": "lib/msgraph.cadl",
+  "cadlMain": "dist/src/csdl.js",
   "engines": {
     "node": ">=14.0.0"
   },
@@ -30,7 +30,6 @@
     "watch": "tsc -p . --watch"
   },
   "files": [
-    "lib/*.cadl",
     "dist/**",
     "!dist/test/**"
   ],

@@ -41,8 +41,9 @@ const libDefinition = {
 } as const;
 
 export const msgraphLib = createCadlLibrary(libDefinition);
+export type msgraphLibType = typeof msgraphLib;
 
-const { reportDiagnostic } = msgraphLib;
+export const { reportDiagnostic } = msgraphLib;
 
 const idFieldsKey = Symbol();
 

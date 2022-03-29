@@ -7,6 +7,7 @@ dependencies:
   '@rush-temp/cadl-vs': file:projects/cadl-vs.tgz
   '@rush-temp/cadl-vscode': file:projects/cadl-vscode.tgz
   '@rush-temp/compiler': file:projects/compiler.tgz
+  '@rush-temp/csdl': file:projects/csdl.tgz
   '@rush-temp/eslint-config-cadl': file:projects/eslint-config-cadl.tgz_prettier@2.5.1
   '@rush-temp/msgraph': file:projects/msgraph.tgz
   '@rush-temp/openapi': file:projects/openapi.tgz
@@ -33,6 +34,7 @@ dependencies:
   '@types/yargs': 17.0.10
   '@typescript-eslint/eslint-plugin': 5.16.0_442678e62820c318289e0cc5e55a42ad
   '@typescript-eslint/parser': 5.16.0_eslint@8.11.0+typescript@4.5.5
+  '@xmldom/xmldom': 0.8.1
   ajv: 8.9.0
   autorest: 3.3.2
   c8: 7.11.0
@@ -536,6 +538,12 @@ packages:
     dev: false
     resolution:
       integrity: sha512-sL/cEvJWAnClXw0wHk85/2L0G6Sj8UB0Ctc1TEMbKSsmpRosqhwj9gWgFRZSrBr2f9tiXISwNhCPmlfqUqyb9Q==
+  /@xmldom/xmldom/0.8.1:
+    dev: false
+    engines:
+      node: '>=10.0.0'
+    resolution:
+      integrity: sha512-4wOae+5N2RZ+CZXd9ZKwkaDi55IxrSTOjHpxTvQQ4fomtOJmqVxbmICA9jE1jvnqNhpfgz8cnfFagG86wV/xLQ==
   /abab/1.0.4:
     dev: false
     resolution:
@@ -4078,6 +4086,12 @@ packages:
       node: '>=4.0'
     resolution:
       integrity: sha1-Ey7mPS7FVlxVfiD0wi35rKaGsQ0=
+  /xmldom/0.6.0:
+    dev: false
+    engines:
+      node: '>=10.0.0'
+    resolution:
+      integrity: sha512-iAcin401y58LckRZ0TkI4k0VSM1Qg0KGSc3i8rU+xrxe19A/BN1zHyVSJY7uoutVlaTSzYyk/v5AmkewAP7jtg==
   /y18n/5.0.8:
     dev: false
     engines:
@@ -4261,6 +4275,18 @@ packages:
       integrity: sha512-W3Ig+HY/eZS2EH5jleYRzp/X6KwK/QgqSQIhlMFIh8kxpQtCvsszre6FZXGsx/QLIOmFVkrixPnl5VIvBoizrg==
       tarball: file:projects/compiler.tgz
     version: 0.0.0
+  file:projects/csdl.tgz:
+    dependencies:
+      '@types/node': 14.0.27
+      '@types/prettier': 2.4.4
+      '@xmldom/xmldom': 0.8.1
+      typescript: 4.5.5
+    dev: false
+    name: '@rush-temp/csdl'
+    resolution:
+      integrity: sha512-0VIRJ3Xo/lEkSmIZneEItOOfmir7HC3Nlf94cP1oYHKTBH6fEaR+e0N1isClIzs+tD8bOkwr0inNA+cOkp40TQ==
+      tarball: file:projects/csdl.tgz
+    version: 0.0.0
   file:projects/eslint-config-cadl.tgz_prettier@2.5.1:
     dependencies:
       '@rushstack/eslint-patch': 1.1.0
@@ -4283,11 +4309,13 @@ packages:
     dependencies:
       '@types/node': 14.0.27
       '@types/prettier': 2.4.4
+      '@xmldom/xmldom': 0.8.1
       typescript: 4.5.5
+      xmldom: 0.6.0
     dev: false
     name: '@rush-temp/msgraph'
     resolution:
-      integrity: sha512-rblBm+H6fg2cEA0lTPFmzAfuEll+zKsWO/fkaxNGwPHgqs9Y9QGn0vM11E+vnl+/dSlIls1LD2WSE8sIFbqGqA==
+      integrity: sha512-qky5IGeksesNLR64e/uCPQB4m3se/x81oqgGY7U7EH1wGq5t36qRVxXKiCI03hbm/VxJUxkrrEtjnGFU6gSO+Q==
       tarball: file:projects/msgraph.tgz
     version: 0.0.0
   file:projects/openapi.tgz:
@@ -4412,6 +4440,7 @@ specifiers:
   '@rush-temp/cadl-vs': file:./projects/cadl-vs.tgz
   '@rush-temp/cadl-vscode': file:./projects/cadl-vscode.tgz
   '@rush-temp/compiler': file:./projects/compiler.tgz
+  '@rush-temp/csdl': file:./projects/csdl.tgz
   '@rush-temp/eslint-config-cadl': file:./projects/eslint-config-cadl.tgz
   '@rush-temp/msgraph': file:./projects/msgraph.tgz
   '@rush-temp/openapi': file:./projects/openapi.tgz
@@ -4438,6 +4467,7 @@ specifiers:
   '@types/yargs': ~17.0.2
   '@typescript-eslint/eslint-plugin': ^5.10.0
   '@typescript-eslint/parser': ^5.10.0
+  '@xmldom/xmldom': ~0.8.1
   ajv: ~8.9.0
   autorest: ~3.3.2
   c8: ~7.11.0

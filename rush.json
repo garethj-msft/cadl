@@ -127,6 +127,12 @@
       "shouldPublish": true
     },
     {
+      "packageName": "@cadl-lang/csdl",
+      "projectFolder": "packages/csdl",
+      "reviewCategory": "production",
+      "shouldPublish": true
+    },
+    {
       "packageName": "@cadl-lang/versioning",
       "projectFolder": "packages/versioning",
       "reviewCategory": "production",
